@@ -143,6 +143,51 @@ cd google_workspace_mcp
 uv run main.py
 ```
 
+### Fork Development Setup
+
+If you're working with a **fork** of this repository (recommended for custom enhancements):
+
+```bash
+# Clone your fork
+git clone https://github.com/your-username/google_workspace_mcp.git
+cd google_workspace_mcp
+
+# Add upstream remote to stay updated with original repository
+git remote add upstream https://github.com/taylorwilsdon/google_workspace_mcp.git
+
+# Verify remote configuration
+git remote -v
+# Should show:
+# origin    https://github.com/your-username/google_workspace_mcp.git (fetch/push)
+# upstream  https://github.com/taylorwilsdon/google_workspace_mcp.git (fetch/push)
+
+# Install and run
+uv run main.py
+```
+
+#### Fork Development Workflow
+
+**Daily Development:**
+```bash
+# Make changes to your target areas (e.g., gsheets/, gslides/)
+git add .
+git commit -m "Your enhancement description"
+git push origin main  # Pushes to YOUR fork
+```
+
+**Staying Updated:**
+```bash
+# Fetch and merge updates from original repository
+git fetch upstream
+git merge upstream/main
+git push origin main  # Update your fork
+```
+
+**Security Note for Forks:** 
+- OAuth credentials are automatically excluded from version control via `.gitignore`
+- Use environment variables or local `client_secret.json` files (never commit credentials!)
+- See `CLAUDE.md` for detailed fork development guidance
+
 ### Prerequisites
 
 - **Python 3.11+**
