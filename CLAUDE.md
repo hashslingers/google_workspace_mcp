@@ -277,7 +277,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add:
       "env": {
         "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
         "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
-        "USER_GOOGLE_EMAIL": "justin@codaanalytics.xyz",
+        "USER_GOOGLE_EMAIL": "your-email@gmail.com",
         "OAUTHLIB_INSECURE_TRANSPORT": "1"
       }
     },
@@ -306,7 +306,7 @@ The key fix for Claude Code MCP configuration was:
 
 3. **Added required environment variables**:
    - Google OAuth credentials
-   - User email: `justin@codaanalytics.xyz`
+   - User email: `your-email@gmail.com`
    - `OAUTHLIB_INSECURE_TRANSPORT`: `"1"`
 
 #### Configuration Methods
@@ -334,7 +334,7 @@ cat > ~/claude-code-mcp-config.json << 'EOF'
       "env": {
         "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
         "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
-        "USER_GOOGLE_EMAIL": "justin@codaanalytics.xyz",
+        "USER_GOOGLE_EMAIL": "your-email@gmail.com",
         "OAUTHLIB_INSECURE_TRANSPORT": "1"
       }
     }
