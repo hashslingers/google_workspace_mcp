@@ -1,0 +1,64 @@
+{
+  "mcpServers": {
+    "google_sheets": {
+      "command": "/Users/js/Documents/Claude/MCP_GoogleWorkspace/google_workspace_mcp/google_workspace_mcp_wrapper_fixed.sh",
+      "args": ["8000", "sheets", "drive"],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
+        "USER_GOOGLE_EMAIL": "justin@codaanalytics.xyz",
+        "OAUTHLIB_INSECURE_TRANSPORT": "1"
+      }
+    },
+    "google_slides": {
+      "command": "/Users/js/Documents/Claude/MCP_GoogleWorkspace/google_workspace_mcp/google_workspace_mcp_wrapper_fixed.sh",
+      "args": ["8001", "slides", "drive"],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
+        "USER_GOOGLE_EMAIL": "justin@codaanalytics.xyz",
+        "OAUTHLIB_INSECURE_TRANSPORT": "1"
+      }
+    },
+    "google_docs": {
+      "command": "/Users/js/Documents/Claude/MCP_GoogleWorkspace/google_workspace_mcp/google_workspace_mcp_wrapper_fixed.sh",
+      "args": ["8002", "docs", "drive"],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
+        "USER_GOOGLE_EMAIL": "justin@codaanalytics.xyz",
+        "OAUTHLIB_INSECURE_TRANSPORT": "1"
+      }
+    },
+    "google_communication": {
+      "command": "/Users/js/Documents/Claude/MCP_GoogleWorkspace/google_workspace_mcp/google_workspace_mcp_wrapper_fixed.sh",
+      "args": ["8003", "gmail", "chat"],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
+        "USER_GOOGLE_EMAIL": "justin@codaanalytics.xyz",
+        "OAUTHLIB_INSECURE_TRANSPORT": "1"
+      }
+    },
+    "google_calendar_tasks": {
+      "command": "/Users/js/Documents/Claude/MCP_GoogleWorkspace/google_workspace_mcp/google_workspace_mcp_wrapper_fixed.sh",
+      "args": ["8004", "calendar", "tasks"],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
+        "USER_GOOGLE_EMAIL": "justin@codaanalytics.xyz",
+        "OAUTHLIB_INSECURE_TRANSPORT": "1"
+      }
+    },
+    "google_forms": {
+      "command": "/Users/js/Documents/Claude/MCP_GoogleWorkspace/google_workspace_mcp/google_workspace_mcp_wrapper_fixed.sh",
+      "args": ["8005", "forms", "drive"],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
+        "USER_GOOGLE_EMAIL": "justin@codaanalytics.xyz",
+        "OAUTHLIB_INSECURE_TRANSPORT": "1"
+      }
+    }
+  }
+}

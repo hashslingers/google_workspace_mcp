@@ -161,15 +161,55 @@ git remote -v
 # origin    https://github.com/your-username/google_workspace_mcp.git (fetch/push)
 # upstream  https://github.com/taylorwilsdon/google_workspace_mcp.git (fetch/push)
 
-# Install and run
-uv run main.py
+# Install uv if needed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+#### Critical: Wrapper Scripts for Fork Development
+
+**Forks require wrapper scripts** to work with Claude Desktop because:
+- Python needs to run from the project directory for local imports
+- Claude Desktop doesn't inherit your shell's PATH configuration
+- Each server needs proper OAuth port configuration
+
+Create the essential `google_workspace_mcp_wrapper_oauth_fix.sh`:
+
+```bash
+#!/bin/bash
+set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Add uv to PATH - adjust for your system
+export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+
+PORT="$1"
+shift
+
+# Critical: Sync OAuth ports
+export WORKSPACE_MCP_PORT="$PORT"
+export OAUTH_CALLBACK_PORT="$PORT"
+
+TOOLS_ARGS=""
+[ $# -gt 0 ] && TOOLS_ARGS="--tools $*"
+
+UV_PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin/uv"
+exec $UV_PATH run main.py $TOOLS_ARGS
+```
+
+Make it executable:
+```bash
+chmod +x google_workspace_mcp_wrapper_oauth_fix.sh
 ```
 
 #### Fork Development Workflow
 
 **Daily Development:**
 ```bash
-# Make changes to your target areas (e.g., gsheets/, gslides/)
+# Test changes locally using wrapper
+./google_workspace_mcp_wrapper_oauth_fix.sh 8000 sheets drive
+
+# Commit changes
 git add .
 git commit -m "Your enhancement description"
 git push origin main  # Pushes to YOUR fork
@@ -183,10 +223,10 @@ git merge upstream/main
 git push origin main  # Update your fork
 ```
 
-**Security Note for Forks:** 
+**Security Note for Forks:**
 - OAuth credentials are automatically excluded from version control via `.gitignore`
 - Use environment variables or local `client_secret.json` files (never commit credentials!)
-- See `CLAUDE.md` for detailed fork development guidance
+- See `CLAUDE.md` for detailed fork development guidance and Claude Desktop configuration
 
 ### Prerequisites
 

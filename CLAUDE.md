@@ -95,11 +95,80 @@ Create a local `client_secret.json` file (automatically gitignored):
 - Single MCP server loading all ~50 Google Workspace tools
 - High token usage (3,000-4,000 tokens per message)
 - All tools loaded regardless of need
+- Single port (8000) handling all services
+- Memory overhead from loading unused tools
 
-### Current Architecture
+### Current Modular Architecture
 - Multiple tool-specific servers, each with focused functionality
 - Reduced token usage (~400-600 tokens per message)
 - Tools loaded on-demand based on specific server
+- Dedicated ports (8000-8005) for service isolation
+- Lower memory footprint per server instance
+
+### Benefits of the Modular Fork Architecture
+
+#### 1. **Token Efficiency**
+- **Before**: Every message included context for all 50+ tools
+- **After**: Only 5-10 relevant tools per server
+- **Impact**: 80-85% reduction in token usage per interaction
+
+#### 2. **Service Isolation**
+- Each service runs independently on its own port
+- Crashes or issues in one service don't affect others
+- Easier to debug service-specific problems
+- Can restart individual services without affecting others
+
+#### 3. **Development Advantages**
+- Work on sheets tools without affecting slides functionality
+- Test individual services in isolation
+- Cleaner logs (only relevant service output)
+- Faster startup times for each server
+
+#### 4. **OAuth Management**
+- Each service has its own OAuth callback port
+- No conflicts between simultaneous authentications
+- Service-specific credential management possible
+
+#### 5. **Resource Optimization**
+- Only load Python modules for required tools
+- Reduced memory usage per server instance
+- Better performance for specialized workflows
+
+### Architecture Diagram
+
+```
+Claude Desktop
+    │
+    ├── google_sheets (Port 8000)
+    │   ├── sheets_tools.py
+    │   └── drive_tools.py (shared)
+    │
+    ├── google_slides (Port 8001)
+    │   ├── slides_tools.py
+    │   └── drive_tools.py (shared)
+    │
+    ├── google_docs (Port 8002)
+    │   ├── docs_tools.py
+    │   └── drive_tools.py (shared)
+    │
+    ├── google_communication (Port 8003)
+    │   ├── gmail_tools.py
+    │   └── chat_tools.py
+    │
+    ├── google_calendar_tasks (Port 8004)
+    │   ├── calendar_tools.py
+    │   └── tasks_tools.py
+    │
+    └── google_forms (Port 8005)
+        ├── forms_tools.py
+        └── drive_tools.py (shared)
+```
+
+Each server instance:
+- Runs via `google_workspace_mcp_wrapper_oauth_fix.sh`
+- Has isolated environment variables
+- Maintains separate debug logs
+- Can be updated independently
 
 ## Key Files Modified
 
@@ -108,19 +177,37 @@ Create a local `client_secret.json` file (automatically gitignored):
 - Updated tool_imports dictionary
 - Added icons for all tools
 
-### 2. google_workspace_mcp_wrapper.sh
-- Master wrapper script for all tool-specific servers
-- Handles port assignment, environment setup, and debug output
-- Usage: `./google_workspace_mcp_wrapper.sh <port> <tool1> <tool2> ...`
+### 2. Wrapper Scripts (Critical for Fork Functionality)
+
+#### google_workspace_mcp_wrapper_oauth_fix.sh (PRODUCTION USE)
+The primary wrapper script that enables Claude Desktop to properly launch MCP servers from the fork:
+
+**Key Features:**
+- **Directory Context Fix**: Ensures Python runs from the project directory regardless of where Claude launches it
+- **PATH Resolution**: Explicitly adds `/Library/Frameworks/Python.framework/Versions/3.12/bin` to PATH to find `uv` command
+- **OAuth Port Synchronization**: Sets both `WORKSPACE_MCP_PORT` and `OAUTH_CALLBACK_PORT` to the same value for proper authentication
+- **Tool-Specific Loading**: Passes arguments to load only required tools per server instance
+
+**Why This Script is Essential:**
+- Without it, Python can't find local module imports (`core`, `auth`, etc.)
+- Claude Desktop doesn't inherit your shell's PATH configuration
+- Each server needs its OAuth callback on its specific port (8000-8005)
+
+#### google_workspace_mcp_wrapper_fixed.sh (BACKUP)
+Alternative wrapper with more verbose logging and validation, useful for debugging issues.
 
 ### 3. Claude Desktop Configuration
-- Split monolithic server into tool-specific instances:
+- Split monolithic server into tool-specific instances using wrapper scripts:
   - `google_sheets` (Port 8000): sheets, drive
-  - `google_slides` (Port 8001): slides, drive  
+  - `google_slides` (Port 8001): slides, drive
   - `google_docs` (Port 8002): docs, drive
   - `google_communication` (Port 8003): gmail, chat
   - `google_calendar_tasks` (Port 8004): calendar, tasks
   - `google_forms` (Port 8005): forms, drive
+
+**Configuration Location**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+Each server entry uses the `google_workspace_mcp_wrapper_oauth_fix.sh` script with absolute paths.
 
 ## Development Focus Areas
 
@@ -161,6 +248,243 @@ Based on your use case, focus on these modules:
 - Animation and transition management
 - Template and master slide operations
 
+## Dual-Environment Setup: Claude Desktop + Claude Code
+
+### Overview
+This fork is configured to work with BOTH Claude Desktop and Claude Code, providing Google Workspace MCP access in both environments.
+
+### 1. Claude Desktop Setup (Fork-Specific)
+
+#### Complete Setup Process
+
+1. **Ensure Wrapper Script Exists**:
+```bash
+# Check that the oauth_fix wrapper is present and executable
+ls -la google_workspace_mcp_wrapper_oauth_fix.sh
+# If missing, see "Wrapper Script Creation" below
+```
+
+2. **Configure Claude Desktop**:
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add:
+
+```json
+{
+  "mcpServers": {
+    "google_sheets": {
+      "command": "/Users/js/Documents/Claude/MCP_GoogleWorkspace/google_workspace_mcp/google_workspace_mcp_wrapper_oauth_fix.sh",
+      "args": ["8000", "sheets", "drive"],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
+        "USER_GOOGLE_EMAIL": "justin@codaanalytics.xyz",
+        "OAUTHLIB_INSECURE_TRANSPORT": "1"
+      }
+    },
+    // Repeat pattern for other services on ports 8001-8005
+  }
+}
+```
+
+3. **Restart Claude Desktop** for changes to take effect
+
+### 2. Claude Code Setup (MCP in Terminal Sessions)
+
+Claude Code can ALSO use MCP servers, configured separately from Claude Desktop:
+
+#### Configuration Resolution (What Fixed It)
+
+The key fix for Claude Code MCP configuration was:
+
+1. **Changed command from**:
+   - ❌ `debug_uv.sh` (doesn't exist)
+   - ✅ To: `google_workspace_mcp_wrapper_oauth_fix.sh` (the working script)
+
+2. **Added necessary arguments**:
+   - Port: `8000`
+   - Services: `sheets`, `drive`
+
+3. **Added required environment variables**:
+   - Google OAuth credentials
+   - User email: `justin@codaanalytics.xyz`
+   - `OAUTHLIB_INSECURE_TRANSPORT`: `"1"`
+
+#### Configuration Methods
+
+**Option 1: Using `claude mcp` command** (RECOMMENDED):
+```bash
+# Configure MCP servers for Claude Code
+claude mcp
+
+# In the configuration interface:
+# 1. Set command to: /full/path/to/google_workspace_mcp_wrapper_oauth_fix.sh
+# 2. Add arguments: 8000 sheets drive
+# 3. Add environment variables (OAuth credentials, email, etc.)
+```
+
+**Option 2: Using `--mcp-config` flag**:
+```bash
+# Create a Claude Code specific MCP config file
+cat > ~/claude-code-mcp-config.json << 'EOF'
+{
+  "mcpServers": {
+    "google_sheets": {
+      "command": "/Users/js/Documents/Claude/MCP_GoogleWorkspace/google_workspace_mcp/google_workspace_mcp_wrapper_oauth_fix.sh",
+      "args": ["8000", "sheets", "drive"],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
+        "USER_GOOGLE_EMAIL": "justin@codaanalytics.xyz",
+        "OAUTHLIB_INSECURE_TRANSPORT": "1"
+      }
+    }
+  }
+}
+EOF
+
+# Start Claude Code with MCP config
+claude --mcp-config ~/claude-code-mcp-config.json
+```
+
+#### Verify MCP in Claude Code
+```bash
+# In a Claude Code session, check MCP status
+/mcp
+
+# Should show your configured Google Workspace servers
+# If "No MCP servers configured", check the fix above
+```
+
+### Wrapper Script Creation
+
+If the wrapper script is missing, create `google_workspace_mcp_wrapper_oauth_fix.sh`:
+
+```bash
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+log_debug() {
+    echo "[MCP-WRAPPER $(date '+%Y-%m-%d %H:%M:%S')] $1" >&2
+}
+
+log_debug "=== Google Workspace MCP Server Wrapper Starting ==="
+
+# Add uv to PATH (adjust path if needed for your system)
+export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+
+cd "$SCRIPT_DIR"
+
+if [ $# -eq 0 ]; then
+    echo "ERROR: Missing arguments" >&2
+    echo "Usage: $0 <port> [tool1] [tool2] ..." >&2
+    exit 1
+fi
+
+PORT="$1"
+shift
+
+# Critical: Set both ports to the same value
+export WORKSPACE_MCP_PORT="$PORT"
+export OAUTH_CALLBACK_PORT="$PORT"
+
+log_debug "Port: $PORT (using for both MCP and OAuth callback)"
+log_debug "Tools: $*"
+
+if [ $# -gt 0 ]; then
+    TOOLS_ARGS="--tools $*"
+else
+    TOOLS_ARGS=""
+fi
+
+UV_PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin/uv"
+CMD="$UV_PATH run main.py $TOOLS_ARGS"
+log_debug "Executing: $CMD"
+
+exec $CMD
+```
+
+Make it executable:
+```bash
+chmod +x google_workspace_mcp_wrapper_oauth_fix.sh
+```
+
+### 3. Dual-Environment Workflow
+
+With both environments configured, you now have powerful flexibility:
+
+#### When to Use Each Environment
+
+**Claude Desktop (Main Chat)**:
+- ✅ Quick Google Workspace operations
+- ✅ Natural language interactions ("Create a budget spreadsheet")
+- ✅ Non-coding tasks
+- ✅ Simple queries and updates
+
+**Claude Code (Terminal Sessions)**:
+- ✅ Development and debugging
+- ✅ File editing and code generation
+- ✅ Complex automations with Google Workspace
+- ✅ Combining MCP tools with file operations
+
+#### Example Workflows
+
+**Workflow 1: Data Analysis Project**
+```bash
+# In Claude Code:
+/code
+# Create Python script to process data
+# Use MCP to read Google Sheets data
+# Process and analyze
+# Write results back to Google Sheets
+```
+
+**Workflow 2: Report Generation**
+```bash
+# In Claude Desktop:
+"Read data from my Sales 2024 spreadsheet"
+"Create a summary presentation with key metrics"
+
+# Switch to Claude Code:
+/code
+# Generate detailed analysis scripts
+# Create visualization code
+# Update multiple sheets programmatically
+```
+
+#### Usage Examples
+
+**Claude Desktop Examples**:
+```
+User: "List my Google spreadsheets"
+User: "Create a new sheet called Project Tracker"
+User: "Read the data from Budget 2024 sheet A1:D10"
+User: "Update cell B5 in my Sales sheet to 1500"
+```
+
+**Claude Code Examples**:
+```bash
+# After configuring MCP in Claude Code
+/code
+
+# Now you can combine file operations with Google Workspace:
+"Create a Python script that reads from my Budget sheet and generates a report"
+"Write a function to sync local CSV files with Google Sheets"
+"Build an automation to update multiple Google Slides from a data source"
+```
+
+### Common Issues and Solutions
+
+**Issue**: "MCP not available in Claude Code"
+**Solution**: Ensure you used the correct wrapper script path (not debug_uv.sh)
+
+**Issue**: "Different results in Desktop vs Code"
+**Solution**: Both use the same wrapper script, so results should be identical. Check port conflicts.
+
+**Issue**: "Authentication fails in one environment"
+**Solution**: OAuth tokens are shared via `.credentials/` directory, so auth in one should work in both
+
 ## Development Setup
 
 ### Environment Setup
@@ -169,12 +493,8 @@ Based on your use case, focus on these modules:
 git clone https://github.com/hashslingers/google_workspace_mcp.git
 cd google_workspace_mcp
 
-# Set up virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
+# Install uv if not present
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Set up OAuth credentials (see Security section above)
 export GOOGLE_OAUTH_CLIENT_ID="your-client-id"
@@ -183,21 +503,21 @@ export GOOGLE_OAUTH_CLIENT_SECRET="your-client-secret"
 
 ### Testing Your Changes
 ```bash
-# Test with only sheets tools
+# Test with only sheets tools using the wrapper
+./google_workspace_mcp_wrapper_oauth_fix.sh 8000 sheets drive
+
+# Or test directly with uv (from project directory)
 uv run main.py --tools sheets drive
 
 # Test with only slides tools
-uv run main.py --tools slides drive
-
-# Or use the wrapper (simulates Claude Desktop)
-./google_workspace_mcp_wrapper.sh 8000 sheets drive
+./google_workspace_mcp_wrapper_oauth_fix.sh 8001 slides drive
 ```
 
 ### Development Mode vs Production
-- **Development Mode**: Uses local files for immediate changes
-- **Production Mode**: Uses uvx/published package
+- **Development Mode**: Uses local files for immediate changes (your fork setup)
+- **Production Mode**: Uses uvx/published package (original repository)
 
-For your fork development, always use development mode by running from your local directory.
+For your fork development, always use development mode by running from your local directory with the wrapper scripts.
 
 ## Implementation Patterns
 
@@ -238,7 +558,93 @@ Available scope groups in `auth/service_decorator.py`:
 
 ## Troubleshooting
 
-### Common Issues
+### Common Issues with Fork Setup
+
+#### 1. **"Command not found: uv"**
+**Symptom**: Servers fail to start with uv command not found error
+
+**Solution**: The wrapper script includes PATH fix, but verify:
+```bash
+# Check if uv is installed and its location
+which uv
+# Should output something like: /Library/Frameworks/Python.framework/Versions/3.12/bin/uv
+
+# If different, update UV_PATH in wrapper script to match
+```
+
+#### 2. **"ModuleNotFoundError: No module named 'core'"**
+**Symptom**: Python can't find local modules like `core`, `auth`, etc.
+
+**Cause**: Script running from wrong directory
+
+**Solution**: Ensure wrapper script is being used (not direct uv/python commands)
+```bash
+# Wrong (from Claude Desktop config):
+"command": "uv",
+"args": ["run", "main.py"]
+
+# Correct:
+"command": "/path/to/google_workspace_mcp_wrapper_oauth_fix.sh",
+"args": ["8000", "sheets", "drive"]
+```
+
+#### 3. **"OAuth callback failed on port 8000"**
+**Symptom**: Authentication starts but callback fails
+
+**Cause**: Port mismatch between server and OAuth callback
+
+**Solution**: Wrapper script must set both port variables:
+```bash
+export WORKSPACE_MCP_PORT="$PORT"
+export OAUTH_CALLBACK_PORT="$PORT"  # Critical!
+```
+
+#### 4. **"google_calendar_tasks server failed to start"**
+**Symptom**: Some servers work, others don't
+
+**Cause**: Inconsistent wrapper script paths in Claude config
+
+**Solution**: Ensure ALL servers use same wrapper:
+```bash
+# Check Claude config
+cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | grep command
+
+# All should point to same wrapper script
+```
+
+#### 5. **"Permission denied" when running wrapper**
+**Symptom**: Wrapper script won't execute
+
+**Solution**:
+```bash
+chmod +x google_workspace_mcp_wrapper_oauth_fix.sh
+chmod +x google_workspace_mcp_wrapper_fixed.sh  # If using backup
+```
+
+### Fork-Specific Debugging
+
+#### Enable Debug Logging
+The wrapper scripts include debug output to stderr. To see it:
+
+1. **Run wrapper manually**:
+```bash
+./google_workspace_mcp_wrapper_oauth_fix.sh 8000 sheets drive 2>&1 | head -20
+```
+
+2. **Check MCP server log**:
+```bash
+tail -f mcp_server_debug.log
+```
+
+3. **Verify working directory**:
+```bash
+# Add to wrapper script temporarily:
+echo "Current directory: $(pwd)" >&2
+echo "Files here: $(ls -la | head -5)" >&2
+```
+
+### Original Troubleshooting (Still Applies)
+
 1. **"OAuth client credentials not found"**
    - Set environment variables or create `client_secret.json`
 
@@ -250,13 +656,32 @@ Available scope groups in `auth/service_decorator.py`:
    - Clear cached credentials and re-authenticate
 
 4. **Import errors**
-   - Ensure virtual environment is activated
-   - Check dependencies are installed
+   - Ensure running from project directory (wrapper handles this)
+   - Check dependencies: `uv pip list`
+
+### Quick Diagnostic Commands
+
+```bash
+# 1. Verify fork setup
+pwd  # Should be in google_workspace_mcp directory
+ls -la *.sh  # Should see wrapper scripts
+
+# 2. Test wrapper directly
+./google_workspace_mcp_wrapper_oauth_fix.sh 8000 sheets drive
+
+# 3. Check Claude config
+cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | python -m json.tool | grep -A5 google_
+
+# 4. Verify OAuth credentials
+echo $GOOGLE_OAUTH_CLIENT_ID
+ls -la client_secret.json 2>/dev/null || echo "Using env vars"
+```
 
 ### Getting Help
 - Check `authentication_and_routing_guide.md` for detailed auth flow
-- Review original repository documentation
+- Review wrapper script debug output for specific errors
 - Test with minimal examples first
+- See original repository issues: https://github.com/taylorwilsdon/google_workspace_mcp/issues
 
 ## Future Considerations
 
