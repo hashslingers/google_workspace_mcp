@@ -4,20 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "workspace-mcp"
-version = "1.1.8"
+version = "1.5.5"
 description = "Comprehensive, highly performant Google Workspace Streamable HTTP & SSE MCP Server for Calendar, Gmail, Docs, Sheets, Slides & Drive"
 readme = "README.md"
 keywords = [ "mcp", "google", "workspace", "llm", "ai", "claude", "model", "context", "protocol", "server"]
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
  "fastapi>=0.115.12",
- "fastmcp>=2.3.3",
+ "fastmcp==2.12.5",
  "google-api-python-client>=2.168.0",
  "google-auth-httplib2>=0.2.0",
  "google-auth-oauthlib>=1.2.2",
  "httpx>=0.28.1",
  "pyjwt>=2.10.1",
- "tomlkit",
+ "python-dotenv>=1.1.0",
+ "pyyaml>=6.0.2",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -56,6 +57,50 @@ Changelog = "https://github.com/taylorwilsdon/google_workspace_mcp/releases"
 [project.scripts]
 workspace-mcp = "main:main"
 
+[project.optional-dependencies]
+test = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.23.0",
+    "requests>=2.32.3",
+]
+release = [
+    "tomlkit>=0.13.3",
+    "twine>=5.0.0",
+]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.23.0",
+    "requests>=2.32.3",
+    "ruff>=0.12.4",
+    "tomlkit>=0.13.3",
+    "twine>=5.0.0",
+]
+
+[dependency-groups]
+test = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.23.0",
+    "requests>=2.32.3",
+]
+release = [
+    "tomlkit>=0.13.3",
+    "twine>=5.0.0",
+]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.23.0",
+    "requests>=2.32.3",
+    "ruff>=0.12.4",
+    "tomlkit>=0.13.3",
+    "twine>=5.0.0",
+]
+
 [tool.setuptools]
-packages = [ "auth", "gcalendar", "core", "gdocs", "gdrive", "gmail", "gchat", "gsheets", "gforms", "gslides", "gtasks"]
-py-modules = [ "main"]
+py-modules = [ "fastmcp_server", "main"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests*", "docs*", "build", "dist"]
+
+[tool.setuptools.package-data]
+core = ["tool_tiers.yaml"]
