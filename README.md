@@ -228,6 +228,211 @@ git push origin main  # Update your fork
 - Use environment variables or local `client_secret.json` files (never commit credentials!)
 - See `CLAUDE.md` for detailed fork development guidance and Claude Desktop configuration
 
+---
+
+### 🖥️ Setting Up on a New Computer (Including Cloud/Remote Machines)
+
+Whether you're setting up on a new local machine, remote server, or cloud computer, follow these steps to clone and configure the MCP server.
+
+#### 1. Clone the Repository
+
+```bash
+# Clone the hashslingers fork (or your fork)
+git clone https://github.com/hashslingers/google_workspace_mcp.git
+cd google_workspace_mcp
+
+# Optional: Add upstream remote to sync with original repository
+git remote add upstream https://github.com/taylorwilsdon/google_workspace_mcp.git
+```
+
+#### 2. Install uv (Python Package Manager)
+
+```bash
+# Install uv if not present
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Verify installation and note the path
+which uv
+# Common locations:
+# - $HOME/.local/bin/uv (most common)
+# - /opt/homebrew/bin/uv (Homebrew on Apple Silicon)
+# - /usr/local/bin/uv (Homebrew on Intel Macs)
+```
+
+#### 3. Verify/Update Wrapper Script
+
+The wrapper script automatically checks multiple common `uv` locations. If your `uv` is in a non-standard location:
+
+```bash
+# Find your uv location
+which uv
+
+# If needed, add your custom path to the wrapper script
+# Edit google_workspace_mcp_wrapper_oauth_fix.sh around line 42:
+UV_LOCATIONS=(
+    "$HOME/.local/bin/uv"
+    "/your/custom/path/to/uv"  # Add your path here if different
+    "/Library/Frameworks/Python.framework/Versions/3.12/bin/uv"
+    "/opt/homebrew/bin/uv"
+    "/usr/local/bin/uv"
+)
+
+# Make wrapper executable
+chmod +x google_workspace_mcp_wrapper_oauth_fix.sh
+```
+
+#### 4. Configure OAuth Credentials
+
+**For Local/Development Machines:**
+
+Set environment variables in your shell config (`~/.zshrc` or `~/.bashrc`):
+
+```bash
+export GOOGLE_OAUTH_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+export GOOGLE_OAUTH_CLIENT_SECRET="your-client-secret"
+export USER_GOOGLE_EMAIL="your-email@gmail.com"
+export OAUTHLIB_INSECURE_TRANSPORT="1"  # Development only
+```
+
+**For Remote/Cloud Computers:**
+
+Create a `.env` file in the project directory (this is gitignored):
+
+```bash
+# Create .env file
+cat > .env << 'EOF'
+GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
+USER_GOOGLE_EMAIL=your-email@gmail.com
+OAUTHLIB_INSECURE_TRANSPORT=1
+EOF
+
+# Or export them directly in your session
+export GOOGLE_OAUTH_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+export GOOGLE_OAUTH_CLIENT_SECRET="your-client-secret"
+```
+
+#### 5. Configure Claude Desktop (Local Machines)
+
+Edit your Claude Desktop config file:
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "google_sheets": {
+      "command": "/full/path/to/google_workspace_mcp/google_workspace_mcp_wrapper_oauth_fix.sh",
+      "args": ["8000", "sheets", "drive"],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
+        "USER_GOOGLE_EMAIL": "your-email@gmail.com",
+        "OAUTHLIB_INSECURE_TRANSPORT": "1"
+      }
+    }
+  }
+}
+```
+
+**Important**: Use absolute paths in the Claude Desktop config, not `~` or relative paths.
+
+#### 6. Cloud/Remote Computer Considerations
+
+**SSH Port Forwarding for OAuth Callback:**
+
+Since OAuth requires a browser redirect to `http://localhost:8000/oauth2callback`, use SSH tunneling when working on remote machines:
+
+```bash
+# On your local machine, connect with port forwarding
+ssh -L 8000:localhost:8000 user@remote-server
+
+# Now the OAuth callback from your browser will forward to the remote server
+```
+
+**Running in HTTP Mode (Alternative):**
+
+For remote servers, you might want to expose the MCP server via HTTP:
+
+```bash
+# On remote server
+uv run main.py --transport streamable-http --tools gmail drive calendar
+
+# Access via mcp-remote from local Claude Desktop
+# In claude_desktop_config.json:
+{
+  "mcpServers": {
+    "google_workspace": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://your-server-ip:8000/mcp"]
+    }
+  }
+}
+```
+
+**Docker Deployment on Cloud:**
+
+```bash
+# Build and run with docker
+docker build -t workspace-mcp .
+docker run -p 8000:8000 \
+  -e GOOGLE_OAUTH_CLIENT_ID="your-client-id" \
+  -e GOOGLE_OAUTH_CLIENT_SECRET="your-secret" \
+  -e OAUTHLIB_INSECURE_TRANSPORT=1 \
+  workspace-mcp --transport streamable-http
+```
+
+#### 7. Test the Setup
+
+```bash
+# Test the wrapper script can find uv
+./google_workspace_mcp_wrapper_oauth_fix.sh 8000 sheets drive 2>&1 | grep "Found uv"
+# Should output: [MCP-WRAPPER ...] Found uv at: /path/to/uv
+
+# Test the server starts
+./google_workspace_mcp_wrapper_oauth_fix.sh 8000 sheets drive
+# Should see FastMCP banner if successful
+
+# Test from Claude Desktop
+# Restart Claude Desktop and try: "List my Google spreadsheets"
+```
+
+#### Troubleshooting New Installations
+
+**"uv executable not found"**
+```bash
+# Verify uv installation
+which uv
+uv --version
+
+# If not found, reinstall
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc  # or ~/.zshrc
+```
+
+**"Port 8000 already in use"**
+```bash
+# Check what's using the port
+lsof -i :8000
+
+# Kill existing process or use different port
+./google_workspace_mcp_wrapper_oauth_fix.sh 8001 sheets drive
+# Update Claude Desktop config to match new port
+```
+
+**OAuth callback fails on remote machine**
+```bash
+# Ensure SSH port forwarding is active
+ssh -L 8000:localhost:8000 user@remote-server
+
+# Or use ngrok for temporary public URL
+ngrok http 8000
+# Update GOOGLE_OAUTH_REDIRECT_URI to ngrok URL
+```
+
+---
+
 ### Prerequisites
 
 - **Python 3.11+**
