@@ -28,6 +28,7 @@ async def list_spreadsheets(
 ) -> str:
     """
     Lists spreadsheets from Google Drive that the user has access to.
+    TEST MODIFICATION: This will show in tool description!
 
     Args:
         user_google_email (str): The user's Google email address. Required.

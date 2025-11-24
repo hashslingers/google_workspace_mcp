@@ -22,6 +22,7 @@ venv/
 client_secret.json
 client_secrets.json
 .credentials/
+*-mcp-config*.json
 
 # ---- Logs --------------------------------------------------------------
 mcp_server_debug.log
