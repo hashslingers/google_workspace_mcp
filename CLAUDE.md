@@ -560,16 +560,30 @@ Available scope groups in `auth/service_decorator.py`:
 
 ### Common Issues with Fork Setup
 
-#### 1. **"Command not found: uv"**
-**Symptom**: Servers fail to start with uv command not found error
+#### 1. **"Command not found: uv" or Silent Failures in Claude Desktop**
+**Symptom**: Servers fail to start immediately (within ~30ms) when launched by Claude Desktop, or show "uv executable not found" error
 
-**Solution**: The wrapper script includes PATH fix, but verify:
+**Cause**: Claude Desktop doesn't inherit your terminal's PATH environment, so it can't find `uv` using `which` or `command -v`
+
+**Solution**: The wrapper script automatically checks multiple common uv installation locations:
+- `$HOME/.local/bin/uv` (most common for uv installer)
+- `/Library/Frameworks/Python.framework/Versions/3.12/bin/uv`
+- `/opt/homebrew/bin/uv` (Homebrew on Apple Silicon)
+- `/usr/local/bin/uv` (Homebrew on Intel Macs)
+
+If uv is installed in a non-standard location:
 ```bash
-# Check if uv is installed and its location
+# Find your uv location
 which uv
-# Should output something like: /Library/Frameworks/Python.framework/Versions/3.12/bin/uv
 
-# If different, update UV_PATH in wrapper script to match
+# Add it to the UV_LOCATIONS array in the wrapper script (around line 42)
+UV_LOCATIONS=(
+    "$HOME/.local/bin/uv"
+    "/your/custom/path/to/uv"  # Add your path here
+    "/Library/Frameworks/Python.framework/Versions/3.12/bin/uv"
+    "/opt/homebrew/bin/uv"
+    "/usr/local/bin/uv"
+)
 ```
 
 #### 2. **"ModuleNotFoundError: No module named 'core'"**
@@ -622,6 +636,52 @@ chmod +x google_workspace_mcp_wrapper_fixed.sh  # If using backup
 ```
 
 ### Fork-Specific Debugging
+
+#### Understanding the Claude Desktop PATH Issue
+
+**Critical Concept**: Claude Desktop and your terminal have completely different environments.
+
+**The Problem**:
+- Your terminal loads shell config files (`.zshrc`, `.bash_profile`, etc.) which set up your PATH
+- Claude Desktop launches processes directly without loading these configs
+- Commands like `which`, `command -v`, and `$(...)` that work in terminal will fail in Claude Desktop
+- This causes the wrapper script to fail silently if it relies on PATH-based command discovery
+
+**The Solution Pattern**:
+The wrapper script uses a **multi-location fallback pattern** instead of relying on PATH:
+
+```bash
+# ❌ DON'T: Relies on PATH (fails in Claude Desktop)
+UV_PATH="$(which uv)"
+
+# ✅ DO: Check explicit locations with fallback
+UV_LOCATIONS=(
+    "$HOME/.local/bin/uv"
+    "/Library/Frameworks/Python.framework/Versions/3.12/bin/uv"
+    "/opt/homebrew/bin/uv"
+    "/usr/local/bin/uv"
+)
+
+for location in "${UV_LOCATIONS[@]}"; do
+    if [ -x "$location" ]; then
+        UV_PATH="$location"
+        break
+    fi
+done
+```
+
+**Verification**:
+```bash
+# 1. Find your uv location in terminal
+which uv
+# Output: /Users/yourname/.local/bin/uv
+
+# 2. Verify wrapper script includes that location
+grep -A5 "UV_LOCATIONS=" google_workspace_mcp_wrapper_oauth_fix.sh
+
+# 3. Test wrapper can find uv (should show "Found uv at: ...")
+./google_workspace_mcp_wrapper_oauth_fix.sh 8000 sheets drive 2>&1 | grep "Found uv"
+```
 
 #### Enable Debug Logging
 The wrapper scripts include debug output to stderr. To see it:
