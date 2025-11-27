@@ -1711,6 +1711,1494 @@ async def clear_conditional_formatting(
     return text_output
 
 
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("delete_sheet")
+async def delete_sheet(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+) -> str:
+    """
+    Delete a sheet from a spreadsheet.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet to delete (not the sheet name).
+                        Use get_spreadsheet_info to find sheet IDs. Required.
+
+    Returns:
+        str: Confirmation message with details of the deleted sheet.
+
+    Example:
+        Delete sheet with ID 123456 from a spreadsheet
+    """
+    logger.info(f"[delete_sheet] Invoked. Email: '{user_google_email}', Spreadsheet: {spreadsheet_id}, Sheet ID: {sheet_id}")
+
+    # Get sheet name before deleting for confirmation message
+    spreadsheet = await asyncio.to_thread(
+        service.spreadsheets().get(
+            spreadsheetId=spreadsheet_id,
+            fields="sheets.properties"
+        ).execute
+    )
+
+    sheet_name = None
+    for sheet in spreadsheet.get("sheets", []):
+        if sheet["properties"]["sheetId"] == sheet_id:
+            sheet_name = sheet["properties"]["title"]
+            break
+
+    if sheet_name is None:
+        raise Exception(f"Sheet with ID {sheet_id} not found in spreadsheet {spreadsheet_id}")
+
+    # Create delete request
+    request = {
+        "deleteSheet": {
+            "sheetId": sheet_id
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    text_output = (
+        f"Successfully deleted sheet '{sheet_name}' (ID: {sheet_id}) "
+        f"from spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully deleted sheet '{sheet_name}' for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("rename_sheet")
+async def rename_sheet(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    new_name: str,
+) -> str:
+    """
+    Rename an existing sheet in a spreadsheet.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet to rename (not the current name).
+                        Use get_spreadsheet_info to find sheet IDs. Required.
+        new_name (str): The new name for the sheet. Required.
+
+    Returns:
+        str: Confirmation message with old and new sheet names.
+
+    Example:
+        Rename sheet ID 123456 to "Q4 2024 Data"
+    """
+    logger.info(f"[rename_sheet] Invoked. Email: '{user_google_email}', Spreadsheet: {spreadsheet_id}, Sheet ID: {sheet_id}, New Name: {new_name}")
+
+    # Get current sheet name for confirmation message
+    spreadsheet = await asyncio.to_thread(
+        service.spreadsheets().get(
+            spreadsheetId=spreadsheet_id,
+            fields="sheets.properties"
+        ).execute
+    )
+
+    old_name = None
+    for sheet in spreadsheet.get("sheets", []):
+        if sheet["properties"]["sheetId"] == sheet_id:
+            old_name = sheet["properties"]["title"]
+            break
+
+    if old_name is None:
+        raise Exception(f"Sheet with ID {sheet_id} not found in spreadsheet {spreadsheet_id}")
+
+    # Create update request
+    request = {
+        "updateSheetProperties": {
+            "properties": {
+                "sheetId": sheet_id,
+                "title": new_name
+            },
+            "fields": "title"
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    text_output = (
+        f"Successfully renamed sheet from '{old_name}' to '{new_name}' (ID: {sheet_id}) "
+        f"in spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully renamed sheet from '{old_name}' to '{new_name}' for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("insert_rows")
+async def insert_rows(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    start_index: int,
+    num_rows: int = 1,
+) -> str:
+    """
+    Insert blank rows at a specific position in a sheet.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        start_index (int): The index where rows will be inserted (0-based). Existing rows at this position will shift down. Required.
+        num_rows (int): The number of rows to insert. Defaults to 1.
+
+    Returns:
+        str: Confirmation message with details of the insertion.
+
+    Example:
+        Insert 3 blank rows starting at row 5 (insert at index 4, pushing existing row 5 down)
+    """
+    logger.info(f"[insert_rows] Invoked. Sheet ID: {sheet_id}, Start: {start_index}, Count: {num_rows}")
+
+    # Create insert dimension request
+    request = {
+        "insertDimension": {
+            "range": {
+                "sheetId": sheet_id,
+                "dimension": "ROWS",
+                "startIndex": start_index,
+                "endIndex": start_index + num_rows
+            },
+            "inheritFromBefore": False  # New rows inherit formatting from row below
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    text_output = (
+        f"Successfully inserted {num_rows} blank row(s) starting at row {start_index + 1} "
+        f"in sheet ID {sheet_id} of spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully inserted {num_rows} rows for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("delete_rows")
+async def delete_rows(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    start_index: int,
+    end_index: int,
+) -> str:
+    """
+    Delete a range of rows from a sheet.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        start_index (int): The starting row index (0-based, inclusive). Required.
+        end_index (int): The ending row index (0-based, exclusive). Required.
+
+    Returns:
+        str: Confirmation message with details of the deletion.
+
+    Example:
+        Delete rows 5-10 (use start_index=4, end_index=10)
+    """
+    logger.info(f"[delete_rows] Invoked. Sheet ID: {sheet_id}, Start: {start_index}, End: {end_index}")
+
+    num_rows = end_index - start_index
+
+    # Create delete dimension request
+    request = {
+        "deleteDimension": {
+            "range": {
+                "sheetId": sheet_id,
+                "dimension": "ROWS",
+                "startIndex": start_index,
+                "endIndex": end_index
+            }
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    text_output = (
+        f"Successfully deleted {num_rows} row(s) (rows {start_index + 1} to {end_index}) "
+        f"from sheet ID {sheet_id} of spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully deleted {num_rows} rows for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("insert_columns")
+async def insert_columns(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    start_index: int,
+    num_columns: int = 1,
+) -> str:
+    """
+    Insert blank columns at a specific position in a sheet.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        start_index (int): The column index where columns will be inserted (0-based, A=0, B=1, etc.). Existing columns will shift right. Required.
+        num_columns (int): The number of columns to insert. Defaults to 1.
+
+    Returns:
+        str: Confirmation message with details of the insertion.
+
+    Example:
+        Insert 2 blank columns starting at column C (insert at index 2)
+    """
+    logger.info(f"[insert_columns] Invoked. Sheet ID: {sheet_id}, Start: {start_index}, Count: {num_columns}")
+
+    # Create insert dimension request
+    request = {
+        "insertDimension": {
+            "range": {
+                "sheetId": sheet_id,
+                "dimension": "COLUMNS",
+                "startIndex": start_index,
+                "endIndex": start_index + num_columns
+            },
+            "inheritFromBefore": False
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    # Convert column index to letter
+    col_letter = chr(65 + start_index) if start_index < 26 else f"Column {start_index}"
+
+    text_output = (
+        f"Successfully inserted {num_columns} blank column(s) starting at column {col_letter} (index {start_index}) "
+        f"in sheet ID {sheet_id} of spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully inserted {num_columns} columns for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("delete_columns")
+async def delete_columns(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    start_index: int,
+    end_index: int,
+) -> str:
+    """
+    Delete a range of columns from a sheet.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        start_index (int): The starting column index (0-based, inclusive, A=0, B=1, etc.). Required.
+        end_index (int): The ending column index (0-based, exclusive). Required.
+
+    Returns:
+        str: Confirmation message with details of the deletion.
+
+    Example:
+        Delete columns C-E (use start_index=2, end_index=5)
+    """
+    logger.info(f"[delete_columns] Invoked. Sheet ID: {sheet_id}, Start: {start_index}, End: {end_index}")
+
+    num_columns = end_index - start_index
+
+    # Create delete dimension request
+    request = {
+        "deleteDimension": {
+            "range": {
+                "sheetId": sheet_id,
+                "dimension": "COLUMNS",
+                "startIndex": start_index,
+                "endIndex": end_index
+            }
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    text_output = (
+        f"Successfully deleted {num_columns} column(s) (indices {start_index} to {end_index - 1}) "
+        f"from sheet ID {sheet_id} of spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully deleted {num_columns} columns for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("append_rows")
+async def append_rows(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    num_rows: int = 1,
+) -> str:
+    """
+    Append blank rows to the end of a sheet (extends the grid).
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        num_rows (int): The number of blank rows to append. Defaults to 1.
+
+    Returns:
+        str: Confirmation message with details of the appended rows.
+
+    Example:
+        Append 5 blank rows to the end of the sheet
+    """
+    logger.info(f"[append_rows] Invoked. Sheet ID: {sheet_id}, Num rows: {num_rows}")
+
+    # Create append dimension request
+    request = {
+        "appendDimension": {
+            "sheetId": sheet_id,
+            "dimension": "ROWS",
+            "length": num_rows
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    text_output = (
+        f"Successfully appended {num_rows} blank row(s) to the end of sheet ID {sheet_id} "
+        f"in spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully appended {num_rows} rows for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("sort_range")
+async def sort_range(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    start_row: int,
+    end_row: int,
+    start_column: int,
+    end_column: int,
+    sort_column: int,
+    ascending: bool = True,
+) -> str:
+    """
+    Sort a range of data in a sheet by a specified column.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        start_row (int): The starting row index of the range (0-based, inclusive). Required.
+        end_row (int): The ending row index of the range (0-based, exclusive). Required.
+        start_column (int): The starting column index (0-based, A=0, B=1, etc., inclusive). Required.
+        end_column (int): The ending column index (0-based, exclusive). Required.
+        sort_column (int): The column index to sort by (0-based, must be within the range). Required.
+        ascending (bool): If True, sort in ascending order; if False, descending. Defaults to True.
+
+    Returns:
+        str: Confirmation message with details of the sort operation.
+
+    Example:
+        Sort rows 2-10 by column B in ascending order (start_row=1, end_row=10, sort_column=1)
+    """
+    logger.info(f"[sort_range] Invoked. Sheet ID: {sheet_id}, Range: R{start_row}-{end_row}, C{start_column}-{end_column}, Sort by: {sort_column}")
+
+    # Create sort range request
+    request = {
+        "sortRange": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": start_row,
+                "endRowIndex": end_row,
+                "startColumnIndex": start_column,
+                "endColumnIndex": end_column
+            },
+            "sortSpecs": [
+                {
+                    "dimensionIndex": sort_column,
+                    "sortOrder": "ASCENDING" if ascending else "DESCENDING"
+                }
+            ]
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    sort_order = "ascending" if ascending else "descending"
+    text_output = (
+        f"Successfully sorted range (rows {start_row + 1} to {end_row}, columns {start_column} to {end_column - 1}) "
+        f"by column {sort_column} in {sort_order} order in sheet ID {sheet_id} "
+        f"of spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully sorted range for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("freeze_rows")
+async def freeze_rows(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    num_rows: int,
+) -> str:
+    """
+    Freeze the top N rows in a sheet so they remain visible when scrolling.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        num_rows (int): The number of rows to freeze from the top (0 to unfreeze all rows). Required.
+
+    Returns:
+        str: Confirmation message with details of the freeze operation.
+
+    Example:
+        Freeze the top 2 rows (header and subheader)
+    """
+    logger.info(f"[freeze_rows] Invoked. Sheet ID: {sheet_id}, Num rows: {num_rows}")
+
+    # Create update sheet properties request
+    request = {
+        "updateSheetProperties": {
+            "properties": {
+                "sheetId": sheet_id,
+                "gridProperties": {
+                    "frozenRowCount": num_rows
+                }
+            },
+            "fields": "gridProperties.frozenRowCount"
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    if num_rows == 0:
+        text_output = (
+            f"Successfully unfroze all rows in sheet ID {sheet_id} "
+            f"of spreadsheet {spreadsheet_id} for {user_google_email}."
+        )
+    else:
+        text_output = (
+            f"Successfully froze the top {num_rows} row(s) in sheet ID {sheet_id} "
+            f"of spreadsheet {spreadsheet_id} for {user_google_email}."
+        )
+
+    logger.info(f"Successfully froze {num_rows} rows for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("freeze_columns")
+async def freeze_columns(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    num_columns: int,
+) -> str:
+    """
+    Freeze the leftmost N columns in a sheet so they remain visible when scrolling.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        num_columns (int): The number of columns to freeze from the left (0 to unfreeze all columns). Required.
+
+    Returns:
+        str: Confirmation message with details of the freeze operation.
+
+    Example:
+        Freeze the first 2 columns (A and B)
+    """
+    logger.info(f"[freeze_columns] Invoked. Sheet ID: {sheet_id}, Num columns: {num_columns}")
+
+    # Create update sheet properties request
+    request = {
+        "updateSheetProperties": {
+            "properties": {
+                "sheetId": sheet_id,
+                "gridProperties": {
+                    "frozenColumnCount": num_columns
+                }
+            },
+            "fields": "gridProperties.frozenColumnCount"
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    if num_columns == 0:
+        text_output = (
+            f"Successfully unfroze all columns in sheet ID {sheet_id} "
+            f"of spreadsheet {spreadsheet_id} for {user_google_email}."
+        )
+    else:
+        text_output = (
+            f"Successfully froze the leftmost {num_columns} column(s) in sheet ID {sheet_id} "
+            f"of spreadsheet {spreadsheet_id} for {user_google_email}."
+        )
+
+    logger.info(f"Successfully froze {num_columns} columns for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("resize_columns")
+async def resize_columns(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    start_column: int,
+    end_column: int,
+    width_pixels: int,
+) -> str:
+    """
+    Set the width of a range of columns to a specific pixel value.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        start_column (int): The starting column index (0-based, A=0, B=1, etc., inclusive). Required.
+        end_column (int): The ending column index (0-based, exclusive). Required.
+        width_pixels (int): The width in pixels to set for the columns. Required.
+
+    Returns:
+        str: Confirmation message with details of the resize operation.
+
+    Example:
+        Set columns A-C to 150 pixels wide (start_column=0, end_column=3, width_pixels=150)
+    """
+    logger.info(f"[resize_columns] Invoked. Sheet ID: {sheet_id}, Columns: {start_column}-{end_column}, Width: {width_pixels}px")
+
+    num_columns = end_column - start_column
+
+    # Create update dimension properties request
+    request = {
+        "updateDimensionProperties": {
+            "range": {
+                "sheetId": sheet_id,
+                "dimension": "COLUMNS",
+                "startIndex": start_column,
+                "endIndex": end_column
+            },
+            "properties": {
+                "pixelSize": width_pixels
+            },
+            "fields": "pixelSize"
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    text_output = (
+        f"Successfully resized {num_columns} column(s) (indices {start_column} to {end_column - 1}) "
+        f"to {width_pixels} pixels in sheet ID {sheet_id} "
+        f"of spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully resized {num_columns} columns for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("auto_resize_columns")
+async def auto_resize_columns(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    start_column: int,
+    end_column: int,
+) -> str:
+    """
+    Automatically resize columns to fit their content.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        start_column (int): The starting column index (0-based, A=0, B=1, etc., inclusive). Required.
+        end_column (int): The ending column index (0-based, exclusive). Required.
+
+    Returns:
+        str: Confirmation message with details of the auto-resize operation.
+
+    Example:
+        Auto-resize columns A-E to fit their content (start_column=0, end_column=5)
+    """
+    logger.info(f"[auto_resize_columns] Invoked. Sheet ID: {sheet_id}, Columns: {start_column}-{end_column}")
+
+    num_columns = end_column - start_column
+
+    # Create auto resize dimension request
+    request = {
+        "autoResizeDimensions": {
+            "dimensions": {
+                "sheetId": sheet_id,
+                "dimension": "COLUMNS",
+                "startIndex": start_column,
+                "endIndex": end_column
+            }
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    text_output = (
+        f"Successfully auto-resized {num_columns} column(s) (indices {start_column} to {end_column - 1}) "
+        f"to fit content in sheet ID {sheet_id} "
+        f"of spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully auto-resized {num_columns} columns for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("duplicate_sheet")
+async def duplicate_sheet(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    source_sheet_id: int,
+    new_sheet_name: str = None,
+    insert_sheet_index: int = None,
+) -> str:
+    """
+    Duplicate a sheet within the same spreadsheet.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        source_sheet_id (int): The numeric ID of the sheet to duplicate. Use get_spreadsheet_info to find sheet IDs. Required.
+        new_sheet_name (str): Optional name for the duplicated sheet. If not provided, Google Sheets will auto-generate a name.
+        insert_sheet_index (int): Optional position index where the new sheet should be inserted (0-based). If not provided, appends to end.
+
+    Returns:
+        str: Confirmation message with details of the duplicated sheet.
+
+    Example:
+        Duplicate a sheet and name the copy "Q2 Data Copy"
+    """
+    logger.info(f"[duplicate_sheet] Invoked. Source sheet ID: {source_sheet_id}, New name: {new_sheet_name}")
+
+    # Create duplicate sheet request
+    request = {
+        "duplicateSheet": {
+            "sourceSheetId": source_sheet_id,
+        }
+    }
+
+    # Add optional parameters if provided
+    if new_sheet_name is not None:
+        request["duplicateSheet"]["newSheetName"] = new_sheet_name
+
+    if insert_sheet_index is not None:
+        request["duplicateSheet"]["insertSheetIndex"] = insert_sheet_index
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    # Extract the new sheet properties from the response
+    new_sheet_props = response.get("replies", [{}])[0].get("duplicateSheet", {}).get("properties", {})
+    new_sheet_id = new_sheet_props.get("sheetId", "unknown")
+    new_sheet_title = new_sheet_props.get("title", "unknown")
+
+    text_output = (
+        f"Successfully duplicated sheet ID {source_sheet_id} to new sheet '{new_sheet_title}' "
+        f"(ID: {new_sheet_id}) in spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully duplicated sheet for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("find_and_replace")
+async def find_and_replace(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    find_text: str,
+    replacement_text: str,
+    sheet_id: int = None,
+    match_case: bool = False,
+    match_entire_cell: bool = False,
+    search_by_regex: bool = False,
+) -> str:
+    """
+    Find and replace text in a sheet or entire spreadsheet.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        find_text (str): The text or regex pattern to search for. Required.
+        replacement_text (str): The text to replace matches with. Required.
+        sheet_id (int): Optional sheet ID to limit search to a specific sheet. If not provided, searches entire spreadsheet.
+        match_case (bool): If True, search is case-sensitive. Defaults to False.
+        match_entire_cell (bool): If True, only match cells that contain exactly the find_text. Defaults to False.
+        search_by_regex (bool): If True, treat find_text as a regular expression. Defaults to False.
+
+    Returns:
+        str: Confirmation message with count of replacements made.
+
+    Example:
+        Replace all occurrences of "old_value" with "new_value" in a specific sheet
+    """
+    logger.info(f"[find_and_replace] Invoked. Find: '{find_text}', Replace: '{replacement_text}', Sheet ID: {sheet_id}")
+
+    # Create find replace request
+    # Note: sheetId and allSheets are mutually exclusive (oneof in the API)
+    request = {
+        "findReplace": {
+            "find": find_text,
+            "replacement": replacement_text,
+            "matchCase": match_case,
+            "matchEntireCell": match_entire_cell,
+            "searchByRegex": search_by_regex,
+        }
+    }
+
+    # Set scope: either specific sheet or all sheets (mutually exclusive)
+    if sheet_id is not None:
+        request["findReplace"]["sheetId"] = sheet_id
+    else:
+        request["findReplace"]["allSheets"] = True
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    # Extract the number of replacements from the response
+    replacements_made = response.get("replies", [{}])[0].get("findReplace", {}).get("occurrencesChanged", 0)
+
+    scope = f"sheet ID {sheet_id}" if sheet_id is not None else "all sheets"
+    text_output = (
+        f"Successfully replaced {replacements_made} occurrence(s) of '{find_text}' with '{replacement_text}' "
+        f"in {scope} of spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully made {replacements_made} replacements for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("batch_update_values")
+async def batch_update_values(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    updates: list[dict],
+    value_input_option: str = "USER_ENTERED",
+) -> str:
+    """
+    Update multiple ranges of cells with values in a single API call.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        updates (list[dict]): List of updates, each containing 'range' (A1 notation) and 'values' (2D array). Required.
+                             Example: [{"range": "Sheet1!A1:B2", "values": [["a", "b"], ["c", "d"]]}, ...]
+        value_input_option (str): How to interpret values. Options: "USER_ENTERED" (parse as if typed, default) or "RAW" (store as-is).
+
+    Returns:
+        str: Confirmation message with count of cells updated.
+
+    Example:
+        Update multiple ranges: [{"range": "Sheet1!A1", "values": [["Header"]]}, {"range": "Sheet1!A2:A5", "values": [[1], [2], [3], [4]]}]
+    """
+    logger.info(f"[batch_update_values] Invoked. Updates: {len(updates)}, Input option: {value_input_option}")
+
+    # Prepare the data for batch update
+    data = []
+    for update in updates:
+        data.append({
+            "range": update["range"],
+            "values": update["values"]
+        })
+
+    # Create the batch update request
+    body = {
+        "valueInputOption": value_input_option,
+        "data": data
+    }
+
+    # Execute the batch update using the values API
+    response = await asyncio.to_thread(
+        service.spreadsheets().values().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    total_updated_cells = response.get("totalUpdatedCells", 0)
+    total_updated_ranges = response.get("totalUpdatedRows", 0)
+
+    text_output = (
+        f"Successfully updated {total_updated_cells} cell(s) across {len(updates)} range(s) "
+        f"in spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully batch updated {total_updated_cells} cells for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("hide_rows")
+async def hide_rows(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    start_row: int,
+    end_row: int,
+) -> str:
+    """
+    Hide a range of rows in a sheet.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        start_row (int): The starting row index (0-based, inclusive). Required.
+        end_row (int): The ending row index (0-based, exclusive). Required.
+
+    Returns:
+        str: Confirmation message with details of the hidden rows.
+
+    Example:
+        Hide rows 5-10 (use start_row=4, end_row=10)
+    """
+    logger.info(f"[hide_rows] Invoked. Sheet ID: {sheet_id}, Rows: {start_row}-{end_row}")
+
+    num_rows = end_row - start_row
+
+    # Create update dimension properties request to hide rows
+    request = {
+        "updateDimensionProperties": {
+            "range": {
+                "sheetId": sheet_id,
+                "dimension": "ROWS",
+                "startIndex": start_row,
+                "endIndex": end_row
+            },
+            "properties": {
+                "hiddenByUser": True
+            },
+            "fields": "hiddenByUser"
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    text_output = (
+        f"Successfully hid {num_rows} row(s) (rows {start_row + 1} to {end_row}) "
+        f"in sheet ID {sheet_id} of spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully hid {num_rows} rows for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("unhide_rows")
+async def unhide_rows(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    start_row: int,
+    end_row: int,
+) -> str:
+    """
+    Unhide (show) a range of rows in a sheet.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        start_row (int): The starting row index (0-based, inclusive). Required.
+        end_row (int): The ending row index (0-based, exclusive). Required.
+
+    Returns:
+        str: Confirmation message with details of the unhidden rows.
+
+    Example:
+        Unhide rows 5-10 (use start_row=4, end_row=10)
+    """
+    logger.info(f"[unhide_rows] Invoked. Sheet ID: {sheet_id}, Rows: {start_row}-{end_row}")
+
+    num_rows = end_row - start_row
+
+    # Create update dimension properties request to unhide rows
+    request = {
+        "updateDimensionProperties": {
+            "range": {
+                "sheetId": sheet_id,
+                "dimension": "ROWS",
+                "startIndex": start_row,
+                "endIndex": end_row
+            },
+            "properties": {
+                "hiddenByUser": False
+            },
+            "fields": "hiddenByUser"
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    text_output = (
+        f"Successfully unhid {num_rows} row(s) (rows {start_row + 1} to {end_row}) "
+        f"in sheet ID {sheet_id} of spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully unhid {num_rows} rows for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("set_sheet_tab_color")
+async def set_sheet_tab_color(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    sheet_id: int,
+    red: float,
+    green: float,
+    blue: float,
+) -> str:
+    """
+    Set the tab color of a sheet.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        sheet_id (int): The numeric ID of the sheet. Use get_spreadsheet_info to find sheet IDs. Required.
+        red (float): Red component of the color (0.0 to 1.0). Required.
+        green (float): Green component of the color (0.0 to 1.0). Required.
+        blue (float): Blue component of the color (0.0 to 1.0). Required.
+
+    Returns:
+        str: Confirmation message with details of the color change.
+
+    Example:
+        Set tab to red (red=1.0, green=0.0, blue=0.0)
+        Set tab to blue (red=0.0, green=0.0, blue=1.0)
+        Set tab to light green (red=0.5, green=1.0, blue=0.5)
+    """
+    logger.info(f"[set_sheet_tab_color] Invoked. Sheet ID: {sheet_id}, RGB: ({red}, {green}, {blue})")
+
+    # Validate RGB values
+    if not (0.0 <= red <= 1.0 and 0.0 <= green <= 1.0 and 0.0 <= blue <= 1.0):
+        error_msg = f"RGB values must be between 0.0 and 1.0. Got: red={red}, green={green}, blue={blue}"
+        logger.error(error_msg)
+        return f"Error: {error_msg}"
+
+    # Create update sheet properties request with tab color
+    request = {
+        "updateSheetProperties": {
+            "properties": {
+                "sheetId": sheet_id,
+                "tabColor": {
+                    "red": red,
+                    "green": green,
+                    "blue": blue
+                }
+            },
+            "fields": "tabColor"
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    # Convert RGB to 0-255 scale for display
+    r_display = int(red * 255)
+    g_display = int(green * 255)
+    b_display = int(blue * 255)
+
+    text_output = (
+        f"Successfully set tab color for sheet ID {sheet_id} to RGB({r_display}, {g_display}, {b_display}) "
+        f"in spreadsheet {spreadsheet_id} for {user_google_email}."
+    )
+
+    logger.info(f"Successfully set tab color for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_read")
+@handle_http_errors("batch_get_values")
+async def batch_get_values(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    ranges: list[str],
+    major_dimension: str = "ROWS",
+    value_render_option: str = "FORMATTED_VALUE",
+) -> str:
+    """
+    Read multiple ranges of cells in a single API call.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        ranges (list[str]): List of A1 notation ranges to read. Required.
+                           Example: ["Sheet1!A1:B10", "Sheet1!D1:E10", "Sheet2!A1:C5"]
+        major_dimension (str): How to organize the returned values. "ROWS" (default) or "COLUMNS".
+        value_render_option (str): How values should be rendered. Options:
+            - "FORMATTED_VALUE" (default): Values as displayed in the UI
+            - "UNFORMATTED_VALUE": Raw values without formatting
+            - "FORMULA": Formulas if present, otherwise values
+
+    Returns:
+        str: The values from all requested ranges, formatted for readability.
+
+    Example:
+        Read multiple ranges: ["Sheet1!A1:B5", "Sheet1!D1:E5"]
+    """
+    logger.info(f"[batch_get_values] Invoked. Ranges: {ranges}")
+
+    # Execute the batch get request
+    response = await asyncio.to_thread(
+        service.spreadsheets().values().batchGet(
+            spreadsheetId=spreadsheet_id,
+            ranges=ranges,
+            majorDimension=major_dimension,
+            valueRenderOption=value_render_option
+        ).execute
+    )
+
+    value_ranges = response.get("valueRanges", [])
+
+    # Format the output
+    output_parts = [f"Retrieved {len(value_ranges)} range(s) from spreadsheet {spreadsheet_id}:\n"]
+
+    for i, value_range in enumerate(value_ranges):
+        range_name = value_range.get("range", ranges[i] if i < len(ranges) else f"Range {i+1}")
+        values = value_range.get("values", [])
+
+        output_parts.append(f"\n--- {range_name} ---")
+        if values:
+            for row_idx, row in enumerate(values):
+                row_str = "\t".join(str(cell) if cell is not None else "" for cell in row)
+                output_parts.append(f"Row {row_idx + 1}: {row_str}")
+        else:
+            output_parts.append("(empty)")
+
+    text_output = "\n".join(output_parts)
+    logger.info(f"Successfully batch read {len(value_ranges)} ranges for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("batch_clear_values")
+async def batch_clear_values(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    ranges: list[str],
+) -> str:
+    """
+    Clear values from multiple ranges in a single API call.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        ranges (list[str]): List of A1 notation ranges to clear. Required.
+                           Example: ["Sheet1!A1:B10", "Sheet1!D1:E10", "Sheet2!A1:C5"]
+
+    Returns:
+        str: Confirmation message with list of cleared ranges.
+
+    Example:
+        Clear multiple ranges: ["Sheet1!A1:B5", "Sheet1!D1:E5"]
+    """
+    logger.info(f"[batch_clear_values] Invoked. Ranges: {ranges}")
+
+    # Create the batch clear request
+    body = {
+        "ranges": ranges
+    }
+
+    # Execute the batch clear request
+    response = await asyncio.to_thread(
+        service.spreadsheets().values().batchClear(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    cleared_ranges = response.get("clearedRanges", [])
+
+    text_output = (
+        f"Successfully cleared {len(cleared_ranges)} range(s) in spreadsheet {spreadsheet_id} "
+        f"for {user_google_email}.\n"
+        f"Cleared ranges: {', '.join(cleared_ranges)}"
+    )
+
+    logger.info(f"Successfully batch cleared {len(cleared_ranges)} ranges for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("copy_paste")
+async def copy_paste(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    source_sheet_id: int,
+    source_start_row: int,
+    source_end_row: int,
+    source_start_col: int,
+    source_end_col: int,
+    dest_sheet_id: int,
+    dest_start_row: int,
+    dest_start_col: int,
+    paste_type: str = "PASTE_NORMAL",
+    paste_orientation: str = "NORMAL",
+) -> str:
+    """
+    Copy a range of cells and paste to another location.
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        source_sheet_id (int): The sheet ID of the source range. Required.
+        source_start_row (int): Starting row index of source (0-based, inclusive). Required.
+        source_end_row (int): Ending row index of source (0-based, exclusive). Required.
+        source_start_col (int): Starting column index of source (0-based, A=0, inclusive). Required.
+        source_end_col (int): Ending column index of source (0-based, exclusive). Required.
+        dest_sheet_id (int): The sheet ID of the destination. Required.
+        dest_start_row (int): Starting row index of destination (0-based). Required.
+        dest_start_col (int): Starting column index of destination (0-based, A=0). Required.
+        paste_type (str): What to paste. Options:
+            - "PASTE_NORMAL" (default): Paste values, formulas, formats, and merges
+            - "PASTE_VALUES": Paste only values (no formulas/formatting)
+            - "PASTE_FORMAT": Paste only formatting
+            - "PASTE_NO_BORDERS": Paste everything except borders
+            - "PASTE_FORMULA": Paste only formulas
+            - "PASTE_DATA_VALIDATION": Paste only data validation
+            - "PASTE_CONDITIONAL_FORMATTING": Paste only conditional formatting
+        paste_orientation (str): How to orient the pasted data. Options:
+            - "NORMAL" (default): Paste as-is
+            - "TRANSPOSE": Swap rows and columns
+
+    Returns:
+        str: Confirmation message with details of the copy-paste operation.
+
+    Example:
+        Copy A1:C10 from sheet 0 to E1 on sheet 1
+    """
+    logger.info(f"[copy_paste] Invoked. Source: sheet {source_sheet_id} rows {source_start_row}-{source_end_row}, cols {source_start_col}-{source_end_col}")
+
+    # Create the copy paste request
+    request = {
+        "copyPaste": {
+            "source": {
+                "sheetId": source_sheet_id,
+                "startRowIndex": source_start_row,
+                "endRowIndex": source_end_row,
+                "startColumnIndex": source_start_col,
+                "endColumnIndex": source_end_col
+            },
+            "destination": {
+                "sheetId": dest_sheet_id,
+                "startRowIndex": dest_start_row,
+                "endRowIndex": dest_start_row + (source_end_row - source_start_row),
+                "startColumnIndex": dest_start_col,
+                "endColumnIndex": dest_start_col + (source_end_col - source_start_col)
+            },
+            "pasteType": paste_type,
+            "pasteOrientation": paste_orientation
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    # Calculate human-readable descriptions
+    source_rows = source_end_row - source_start_row
+    source_cols = source_end_col - source_start_col
+
+    text_output = (
+        f"Successfully copied {source_rows} row(s) x {source_cols} column(s) "
+        f"from sheet ID {source_sheet_id} to sheet ID {dest_sheet_id} "
+        f"in spreadsheet {spreadsheet_id} for {user_google_email}. "
+        f"Paste type: {paste_type}, Orientation: {paste_orientation}."
+    )
+
+    logger.info(f"Successfully copy-pasted range for {user_google_email}")
+    return text_output
+
+
+@server.tool()
+@require_google_service("sheets", "sheets_write")
+@handle_http_errors("cut_paste")
+async def cut_paste(
+    service,
+    user_google_email: str,
+    spreadsheet_id: str,
+    source_sheet_id: int,
+    source_start_row: int,
+    source_end_row: int,
+    source_start_col: int,
+    source_end_col: int,
+    dest_sheet_id: int,
+    dest_start_row: int,
+    dest_start_col: int,
+    paste_type: str = "PASTE_NORMAL",
+) -> str:
+    """
+    Cut a range of cells and paste to another location (moves the data).
+
+    Args:
+        user_google_email (str): The user's Google email address. Required.
+        spreadsheet_id (str): The ID of the spreadsheet. Required.
+        source_sheet_id (int): The sheet ID of the source range. Required.
+        source_start_row (int): Starting row index of source (0-based, inclusive). Required.
+        source_end_row (int): Ending row index of source (0-based, exclusive). Required.
+        source_start_col (int): Starting column index of source (0-based, A=0, inclusive). Required.
+        source_end_col (int): Ending column index of source (0-based, exclusive). Required.
+        dest_sheet_id (int): The sheet ID of the destination. Required.
+        dest_start_row (int): Starting row index of destination (0-based). Required.
+        dest_start_col (int): Starting column index of destination (0-based, A=0). Required.
+        paste_type (str): What to paste. Options:
+            - "PASTE_NORMAL" (default): Paste values, formulas, formats, and merges
+            - "PASTE_VALUES": Paste only values (no formulas/formatting)
+            - "PASTE_FORMAT": Paste only formatting
+            - "PASTE_NO_BORDERS": Paste everything except borders
+            - "PASTE_FORMULA": Paste only formulas
+
+    Returns:
+        str: Confirmation message with details of the cut-paste operation.
+
+    Example:
+        Cut A1:C10 from sheet 0 and move to E1 on sheet 1
+    """
+    logger.info(f"[cut_paste] Invoked. Source: sheet {source_sheet_id} rows {source_start_row}-{source_end_row}, cols {source_start_col}-{source_end_col}")
+
+    # Create the cut paste request
+    request = {
+        "cutPaste": {
+            "source": {
+                "sheetId": source_sheet_id,
+                "startRowIndex": source_start_row,
+                "endRowIndex": source_end_row,
+                "startColumnIndex": source_start_col,
+                "endColumnIndex": source_end_col
+            },
+            "destination": {
+                "sheetId": dest_sheet_id,
+                "rowIndex": dest_start_row,
+                "columnIndex": dest_start_col
+            },
+            "pasteType": paste_type
+        }
+    }
+
+    # Execute the batch update
+    body = {"requests": [request]}
+    response = await asyncio.to_thread(
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body
+        ).execute
+    )
+
+    # Calculate human-readable descriptions
+    source_rows = source_end_row - source_start_row
+    source_cols = source_end_col - source_start_col
+
+    text_output = (
+        f"Successfully cut and moved {source_rows} row(s) x {source_cols} column(s) "
+        f"from sheet ID {source_sheet_id} to sheet ID {dest_sheet_id} "
+        f"in spreadsheet {spreadsheet_id} for {user_google_email}. "
+        f"Paste type: {paste_type}."
+    )
+
+    logger.info(f"Successfully cut-pasted range for {user_google_email}")
+    return text_output
+
+
 # Create comment management tools for sheets
 _comment_tools = create_comment_tools("spreadsheet", "spreadsheet_id")
 
