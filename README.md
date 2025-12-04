@@ -230,6 +230,44 @@ git push origin main  # Update your fork
 
 ---
 
+### 📦 Quick Clone & Use (TL;DR)
+
+For users who just want to clone and start using the MCP server immediately:
+
+```bash
+# 1. Clone and setup
+git clone https://github.com/hashslingers/google_workspace_mcp.git
+cd google_workspace_mcp
+curl -LsSf https://astral.sh/uv/install.sh | sh
+chmod +x google_workspace_mcp_wrapper_oauth_fix.sh
+
+# 2. Test it works
+./google_workspace_mcp_wrapper_oauth_fix.sh 8000 sheets drive
+```
+
+Then add to Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "google_sheets": {
+      "command": "/full/path/to/google_workspace_mcp/google_workspace_mcp_wrapper_oauth_fix.sh",
+      "args": ["8000", "sheets", "drive"],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "your-client-secret",
+        "USER_GOOGLE_EMAIL": "your-email@gmail.com",
+        "OAUTHLIB_INSECURE_TRANSPORT": "1"
+      }
+    }
+  }
+}
+```
+
+Add more servers on different ports as needed: slides (8001), docs (8002), gmail/chat (8003), calendar/tasks (8004), forms (8005).
+
+---
+
 ### 🖥️ Setting Up on a New Computer (Including Cloud/Remote Machines)
 
 Whether you're setting up on a new local machine, remote server, or cloud computer, follow these steps to clone and configure the MCP server.
