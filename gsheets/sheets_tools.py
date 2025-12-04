@@ -251,34 +251,58 @@ def _convert_indices_to_a1(start_row, end_row, start_col, end_col):
     return f"{start_col_letter}{start_row + 1}:{end_col_letter}{end_row}"
 
 
+def _column_letter_to_index(column: str) -> int:
+    """Convert Excel-style column letter(s) to 0-based index.
+
+    Handles multi-letter columns correctly (A=0, Z=25, AA=26, AB=27, AZ=51, BA=52, etc.)
+
+    Excel columns use 1-indexed base-26 notation where:
+    - A=1, B=2, ..., Z=26
+    - AA=27, AB=28, ..., AZ=52
+    - BA=53, etc.
+
+    This function converts to 0-indexed for the Google Sheets API.
+
+    Args:
+        column: Column letter(s), e.g., 'A', 'Z', 'AA', 'AB', 'AZ', 'BA'
+
+    Returns:
+        0-based column index (A=0, Z=25, AA=26, AB=27, etc.)
+    """
+    result = 0
+    for char in column.upper():
+        result = result * 26 + (ord(char) - ord('A') + 1)
+    return result - 1
+
+
 def _parse_a1_to_indices(a1_range):
     """Helper function to parse A1 notation to row/col indices."""
     import re
-    
+
     # Handle sheet name if present
     if '!' in a1_range:
         sheet_name, a1_range = a1_range.split('!', 1)
     else:
         sheet_name = None
-    
+
     # Parse the range
-    match = re.match(r'([A-Z]+)(\d+):([A-Z]+)(\d+)', a1_range)
+    match = re.match(r'([A-Z]+)(\d+):([A-Z]+)(\d+)', a1_range, re.IGNORECASE)
     if not match:
         # Try single cell
-        match = re.match(r'([A-Z]+)(\d+)', a1_range)
+        match = re.match(r'([A-Z]+)(\d+)', a1_range, re.IGNORECASE)
         if match:
             col = match.group(1)
             row = int(match.group(2))
-            col_idx = sum((ord(c) - 65) * (26 ** i) for i, c in enumerate(reversed(col)))
+            col_idx = _column_letter_to_index(col)
             return sheet_name, row - 1, row, col_idx, col_idx + 1
         return sheet_name, None, None, None, None
-    
+
     start_col, start_row, end_col, end_row = match.groups()
-    
-    # Convert column letters to indices
-    start_col_idx = sum((ord(c) - 65) * (26 ** i) for i, c in enumerate(reversed(start_col)))
-    end_col_idx = sum((ord(c) - 65) * (26 ** i) for i, c in enumerate(reversed(end_col))) + 1  # exclusive
-    
+
+    # Convert column letters to indices using proper base-26 conversion
+    start_col_idx = _column_letter_to_index(start_col)
+    end_col_idx = _column_letter_to_index(end_col) + 1  # exclusive
+
     return sheet_name, int(start_row) - 1, int(end_row), start_col_idx, end_col_idx
 
 
