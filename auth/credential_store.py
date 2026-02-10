@@ -116,10 +116,19 @@ class LocalDirectoryCredentialStore(CredentialStore):
         )
 
     def _get_credential_path(self, user_email: str) -> str:
-        """Get the file path for a user's credentials."""
+        """Get the file path for a user's credentials.
+
+        Includes the server port in the filename so that multiple server
+        instances (e.g. Sheets on port 8000 and Apps Script on port 8006)
+        each maintain their own credential file instead of overwriting
+        each other's scopes and refresh tokens.
+        """
         if not os.path.exists(self.base_dir):
             os.makedirs(self.base_dir)
             logger.info(f"Created credentials directory: {self.base_dir}")
+        port = os.getenv("WORKSPACE_MCP_PORT")
+        if port:
+            return os.path.join(self.base_dir, f"{user_email}_port{port}.json")
         return os.path.join(self.base_dir, f"{user_email}.json")
 
     def get_credential(self, user_email: str) -> Optional[Credentials]:
