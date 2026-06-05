@@ -181,10 +181,12 @@ class TestBuildPersonBody:
 
     def test_build_basic_body(self):
         """Test building a basic person body."""
+        from gcontacts.contacts_tools import EmailInput
+
         body = _build_person_body(
             given_name="John",
             family_name="Doe",
-            email="john@example.com",
+            emails=[EmailInput(address="john@example.com")],
         )
 
         assert body["names"][0]["givenName"] == "John"
@@ -193,16 +195,19 @@ class TestBuildPersonBody:
 
     def test_build_body_with_phone(self):
         """Test building a person body with phone."""
-        body = _build_person_body(phone="+1234567890")
+        from gcontacts.contacts_tools import PhoneInput
+
+        body = _build_person_body(phones=[PhoneInput(number="+1234567890")])
 
         assert body["phoneNumbers"][0]["value"] == "+1234567890"
 
     def test_build_body_with_organization(self):
         """Test building a person body with organization."""
+        from gcontacts.contacts_tools import OrganizationInput
+
         body = _build_person_body(
             given_name="Jane",
-            organization="Acme Corp",
-            job_title="Engineer",
+            organizations=[OrganizationInput(name="Acme Corp", title="Engineer")],
         )
 
         assert body["names"][0]["givenName"] == "Jane"
@@ -211,14 +216,18 @@ class TestBuildPersonBody:
 
     def test_build_body_organization_only(self):
         """Test building a person body with only organization name."""
-        body = _build_person_body(organization="Acme Corp")
+        from gcontacts.contacts_tools import OrganizationInput
+
+        body = _build_person_body(organizations=[OrganizationInput(name="Acme Corp")])
 
         assert body["organizations"][0]["name"] == "Acme Corp"
         assert "title" not in body["organizations"][0]
 
     def test_build_body_job_title_only(self):
         """Test building a person body with only job title."""
-        body = _build_person_body(job_title="CEO")
+        from gcontacts.contacts_tools import OrganizationInput
+
+        body = _build_person_body(organizations=[OrganizationInput(title="CEO")])
 
         assert body["organizations"][0]["title"] == "CEO"
         assert "name" not in body["organizations"][0]
@@ -260,13 +269,14 @@ class TestBuildPersonBody:
 
     def test_build_full_body(self):
         """Test building a person body with all fields."""
+        from gcontacts.contacts_tools import EmailInput, PhoneInput, OrganizationInput
+
         body = _build_person_body(
             given_name="John",
             family_name="Doe",
-            email="john@example.com",
-            phone="+1234567890",
-            organization="Acme Corp",
-            job_title="Engineer",
+            emails=[EmailInput(address="john@example.com")],
+            phones=[PhoneInput(number="+1234567890")],
+            organizations=[OrganizationInput(name="Acme Corp", title="Engineer")],
             notes="VIP contact",
             address="123 Main St",
         )
@@ -291,9 +301,7 @@ class TestImports:
         assert hasattr(contacts_tools, "list_contacts")
         assert hasattr(contacts_tools, "get_contact")
         assert hasattr(contacts_tools, "search_contacts")
-        assert hasattr(contacts_tools, "create_contact")
-        assert hasattr(contacts_tools, "update_contact")
-        assert hasattr(contacts_tools, "delete_contact")
+        assert hasattr(contacts_tools, "manage_contact")
 
     def test_import_group_tools(self):
         """Test that group tools can be imported."""
@@ -301,18 +309,13 @@ class TestImports:
 
         assert hasattr(contacts_tools, "list_contact_groups")
         assert hasattr(contacts_tools, "get_contact_group")
-        assert hasattr(contacts_tools, "create_contact_group")
-        assert hasattr(contacts_tools, "update_contact_group")
-        assert hasattr(contacts_tools, "delete_contact_group")
-        assert hasattr(contacts_tools, "modify_contact_group_members")
+        assert hasattr(contacts_tools, "manage_contact_group")
 
     def test_import_batch_tools(self):
         """Test that batch tools can be imported."""
         from gcontacts import contacts_tools
 
-        assert hasattr(contacts_tools, "batch_create_contacts")
-        assert hasattr(contacts_tools, "batch_update_contacts")
-        assert hasattr(contacts_tools, "batch_delete_contacts")
+        assert hasattr(contacts_tools, "manage_contacts_batch")
 
 
 class TestConstants:
