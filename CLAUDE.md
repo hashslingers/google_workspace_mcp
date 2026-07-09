@@ -317,7 +317,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add:
 {
   "mcpServers": {
     "google_sheets": {
-      "command": "/Users/js/Documents/Claude/MCP_GoogleWorkspace/google_workspace_mcp/google_workspace_mcp_wrapper_oauth_fix.sh",
+      "command": "/Users/js/code/codalabs/google_workspace_mcp/google_workspace_mcp_wrapper_oauth_fix.sh",
       "args": ["8000", "sheets", "drive"],
       "env": {
         "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
@@ -374,7 +374,7 @@ cat > ~/claude-code-mcp-config.json << 'EOF'
 {
   "mcpServers": {
     "google_sheets": {
-      "command": "/Users/js/Documents/Claude/MCP_GoogleWorkspace/google_workspace_mcp/google_workspace_mcp_wrapper_oauth_fix.sh",
+      "command": "/Users/js/code/codalabs/google_workspace_mcp/google_workspace_mcp_wrapper_oauth_fix.sh",
       "args": ["8000", "sheets", "drive"],
       "env": {
         "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
