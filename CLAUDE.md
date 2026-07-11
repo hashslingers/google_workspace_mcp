@@ -1,5 +1,50 @@
 # Google Workspace MCP Development Guide
 
+## Agent Quick Reference — Read This First
+
+### Current Active Setup
+- **Auth email:** justin@codaanalytics.xyz (always use this for `user_google_email`)
+- **Fork:** hashslingers/google_workspace_mcp (branch: `feature/batch-tools-and-fixes`)
+- **Upstream:** taylorwilsdon/google_workspace_mcp
+
+### Active MCP Servers (Claude Code)
+| Server | Port | Tools | Wrapper |
+|--------|------|-------|---------|
+| google_sheets | 8000 | sheets, drive | google_workspace_mcp_wrapper_oauth_fix.sh |
+| google_appscript | 8006 | appscript, drive | google_workspace_mcp_wrapper_oauth_fix.sh |
+
+Previously had 6 servers (ports 8000–8005: sheets, slides, docs, gmail+chat, calendar+tasks, forms). These can be re-enabled in `~/.claude.json` as needed.
+
+### Critical: Per-Port Credential Isolation
+**File:** `auth/credential_store.py` — `_get_credential_path()` appends `_port{N}` to credential filenames.
+
+Each server maintains its own credential file (e.g. `justin@codaanalytics.xyz_port8000.json`). This prevents servers from overwriting each other's OAuth scopes and refresh tokens. Without this fix, whichever server auths last overwrites the shared file, breaking the other server.
+
+**Implication:** Each server must be authed separately (one-time per server). Tokens auto-refresh independently after that.
+
+**Credential location:** `~/.google_workspace_mcp/credentials/`
+
+### Critical: Apps Script `update_script_content` Replaces ALL Files
+The `update_script_content` MCP tool does a **full replacement** of the script project. If you only send `appsscript.json`, it **deletes** `Code.gs` and `Sidebar.html`. Always include ALL three files in every update:
+1. `appsscript.json` (type: JSON)
+2. `Code.gs` (type: SERVER_JS, name: "Code")
+3. `Sidebar.html` (type: HTML, name: "Sidebar")
+
+### Google Sheets Gotchas
+- **`getDisplayValues()` not `getValues()`** — Config sheet values like "December2025" get coerced to JavaScript Date objects by `getValues()`. Always use `getDisplayValues()` for string data.
+- **`getSheetByName()` is case-sensitive** — The Message tab is "Message" (capital M).
+- **Google Cloud Console** — OAuth redirect URIs for each port must be registered: `http://localhost:{port}/oauth2callback`
+- **Apps Script API** must be enabled at both project level (Cloud Console) AND user level (script.google.com/home/usersettings).
+
+### Survey Emailer 2000 (Bound Script Project)
+- **Script ID:** 15HztLX-D3dsPzCNBqJ_LJbmvOricOlitTS9Sq6TxRdsWwgGofXyvSEPB
+- **Spreadsheet:** 1m6FAkB-CWauThwNxC_wul7RlgqNx2BN580gACq25xhM
+- **Tabs:** Usage Guide, December2025, June2025, Config, Message, First-Time Setup
+- Config-driven: Data Sheet, To, Subject, CC, CC Additional, Link, Status
+- Sidebar has rich text (contenteditable) editor with toolbar and HTML source toggle
+
+---
+
 ## Project Overview
 
 This is a Google Workspace MCP (Model Context Protocol) server that provides AI assistants with tools to interact with Google Workspace services. The server has been optimized from a monolithic architecture to a tool-specific, modular approach.
@@ -272,7 +317,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add:
 {
   "mcpServers": {
     "google_sheets": {
-      "command": "/Users/js/Documents/Claude/MCP_GoogleWorkspace/google_workspace_mcp/google_workspace_mcp_wrapper_oauth_fix.sh",
+      "command": "/Users/js/code/codalabs/google_workspace_mcp/google_workspace_mcp_wrapper_oauth_fix.sh",
       "args": ["8000", "sheets", "drive"],
       "env": {
         "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
@@ -329,7 +374,7 @@ cat > ~/claude-code-mcp-config.json << 'EOF'
 {
   "mcpServers": {
     "google_sheets": {
-      "command": "/Users/js/Documents/Claude/MCP_GoogleWorkspace/google_workspace_mcp/google_workspace_mcp_wrapper_oauth_fix.sh",
+      "command": "/Users/js/code/codalabs/google_workspace_mcp/google_workspace_mcp_wrapper_oauth_fix.sh",
       "args": ["8000", "sheets", "drive"],
       "env": {
         "GOOGLE_OAUTH_CLIENT_ID": "your-client-id.apps.googleusercontent.com",

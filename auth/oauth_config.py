@@ -9,6 +9,7 @@ Supports both OAuth 2.0 and OAuth 2.1 with automatic client capability detection
 """
 
 import os
+from threading import RLock
 from urllib.parse import urlparse
 from typing import List, Optional, Dict, Any
 
@@ -25,7 +26,10 @@ class OAuthConfig:
     def __init__(self):
         # Base server configuration
         self.base_uri = os.getenv("WORKSPACE_MCP_BASE_URI", "http://localhost")
-        self.port = int(os.getenv("PORT", os.getenv("WORKSPACE_MCP_PORT", "8000")))
+        if os.getenv("WORKSPACE_MCP_RESOLVED_PORT") == "1":
+            self.port = int(os.getenv("WORKSPACE_MCP_PORT", os.getenv("PORT", "8000")))
+        else:
+            self.port = int(os.getenv("PORT", os.getenv("WORKSPACE_MCP_PORT", "8000")))
         self.base_url = f"{self.base_uri}:{self.port}"
 
         # External URL for reverse proxy scenarios
@@ -36,20 +40,58 @@ class OAuthConfig:
         self.client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
         # OAuth 2.1 configuration
-        self.oauth21_enabled = os.getenv("MCP_ENABLE_OAUTH21", "false").lower() == "true"
+        self.oauth21_enabled = (
+            os.getenv("MCP_ENABLE_OAUTH21", "false").lower() == "true"
+        )
         self.pkce_required = self.oauth21_enabled  # PKCE is mandatory in OAuth 2.1
-        self.supported_code_challenge_methods = ["S256", "plain"] if not self.oauth21_enabled else ["S256"]
+        self.supported_code_challenge_methods = (
+            ["S256", "plain"] if not self.oauth21_enabled else ["S256"]
+        )
 
         # External OAuth 2.1 provider configuration
-        self.external_oauth21_provider = os.getenv("EXTERNAL_OAUTH21_PROVIDER", "false").lower() == "true"
+        self.external_oauth21_provider = (
+            os.getenv("EXTERNAL_OAUTH21_PROVIDER", "false").lower() == "true"
+        )
         if self.external_oauth21_provider and not self.oauth21_enabled:
-            raise ValueError("EXTERNAL_OAUTH21_PROVIDER requires MCP_ENABLE_OAUTH21=true")
+            raise ValueError(
+                "EXTERNAL_OAUTH21_PROVIDER requires MCP_ENABLE_OAUTH21=true"
+            )
 
         # Stateless mode configuration
-        self.stateless_mode = os.getenv("WORKSPACE_MCP_STATELESS_MODE", "false").lower() == "true"
+        self.stateless_mode = (
+            os.getenv("WORKSPACE_MCP_STATELESS_MODE", "false").lower() == "true"
+        )
         if self.stateless_mode and not self.oauth21_enabled:
-            raise ValueError("WORKSPACE_MCP_STATELESS_MODE requires MCP_ENABLE_OAUTH21=true")
+            raise ValueError(
+                "WORKSPACE_MCP_STATELESS_MODE requires MCP_ENABLE_OAUTH21=true"
+            )
 
+        # Service account (domain-wide delegation) configuration
+        self.service_account_key_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_KEY_FILE")
+        self.service_account_key_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_KEY_JSON")
+        if self.service_account_key_file and self.service_account_key_json:
+            raise ValueError(
+                "Only one service account key source may be provided. "
+                "Set either GOOGLE_SERVICE_ACCOUNT_KEY_FILE or "
+                "GOOGLE_SERVICE_ACCOUNT_KEY_JSON, not both."
+            )
+        self.service_account_enabled = bool(
+            self.service_account_key_file or self.service_account_key_json
+        )
+        if self.service_account_enabled and self.oauth21_enabled:
+            raise ValueError(
+                "Service account mode is incompatible with OAuth 2.1 mode. "
+                "Set GOOGLE_SERVICE_ACCOUNT_KEY_FILE or GOOGLE_SERVICE_ACCOUNT_KEY_JSON, "
+                "but not MCP_ENABLE_OAUTH21=true."
+            )
+
+        # Optional per-request impersonation domain allowlist for service accounts.
+        _raw_domains = os.getenv("DWD_ALLOWED_DOMAINS", "")
+        self.dwd_allowed_domains: List[str] = (
+            [d.strip().lower() for d in _raw_domains.split(",") if d.strip()]
+            if self.service_account_enabled and _raw_domains
+            else []
+        )
         # Transport mode (will be set at runtime)
         self._transport_mode = "stdio"  # Default
 
@@ -95,12 +137,24 @@ class OAuthConfig:
         # Don't set FASTMCP_SERVER_AUTH if using external OAuth provider
         # (external OAuth means protocol-level auth is disabled, only tool-level auth)
         if not self.external_oauth21_provider:
-            _set_if_absent("FASTMCP_SERVER_AUTH", "fastmcp.server.auth.providers.google.GoogleProvider" if self.oauth21_enabled else None)
+            _set_if_absent(
+                "FASTMCP_SERVER_AUTH",
+                "fastmcp.server.auth.providers.google.GoogleProvider"
+                if self.oauth21_enabled
+                else None,
+            )
 
         _set_if_absent("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_ID", self.client_id)
-        _set_if_absent("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_SECRET", self.client_secret)
+        if self.client_secret:
+            _set_if_absent(
+                "FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_SECRET", self.client_secret
+            )
         _set_if_absent("FASTMCP_SERVER_AUTH_GOOGLE_BASE_URL", self.get_oauth_base_url())
         _set_if_absent("FASTMCP_SERVER_AUTH_GOOGLE_REDIRECT_PATH", self.redirect_path)
+
+    def is_public_client(self) -> bool:
+        """Return True when only a client_id is configured (no client_secret)."""
+        return bool(self.client_id and not self.client_secret)
 
     def get_redirect_uris(self) -> List[str]:
         """
@@ -135,11 +189,13 @@ class OAuthConfig:
         origins.append(self.base_url)
 
         # VS Code and development origins
-        origins.extend([
-            "vscode-webview://",
-            "https://vscode.dev",
-            "https://github.dev",
-        ])
+        origins.extend(
+            [
+                "vscode-webview://",
+                "https://vscode.dev",
+                "https://github.dev",
+            ]
+        )
 
         # Custom origins from environment
         custom_origins = os.getenv("OAUTH_ALLOWED_ORIGINS")
@@ -155,7 +211,7 @@ class OAuthConfig:
         Returns:
             True if OAuth client credentials are available
         """
-        return bool(self.client_id and self.client_secret)
+        return bool(self.client_id)
 
     def get_oauth_base_url(self) -> str:
         """
@@ -198,9 +254,12 @@ class OAuthConfig:
             "redirect_uri": self.redirect_uri,
             "redirect_path": self.redirect_path,
             "client_configured": bool(self.client_id),
+            "client_secret_configured": bool(self.client_secret),
+            "public_client": self.is_public_client(),
             "oauth21_enabled": self.oauth21_enabled,
             "external_oauth21_provider": self.external_oauth21_provider,
             "pkce_required": self.pkce_required,
+            "service_account_enabled": self.service_account_enabled,
             "transport_mode": self._transport_mode,
             "total_redirect_uris": len(self.get_redirect_uris()),
             "total_allowed_origins": len(self.get_allowed_origins()),
@@ -245,6 +304,15 @@ class OAuthConfig:
         """
         return self.external_oauth21_provider
 
+    def is_service_account_enabled(self) -> bool:
+        """
+        Check if service account (domain-wide delegation) mode is enabled.
+
+        Returns:
+            True if service account mode is enabled
+        """
+        return self.service_account_enabled
+
     def detect_oauth_version(self, request_params: Dict[str, Any]) -> str:
         """
         Detect OAuth version based on request parameters.
@@ -266,6 +334,7 @@ class OAuthConfig:
 
         # Use the structured type for cleaner detection logic
         from auth.oauth_types import OAuthVersionDetectionParams
+
         params = OAuthVersionDetectionParams.from_request(request_params)
 
         # Clear OAuth 2.1 indicator: PKCE is present
@@ -278,6 +347,7 @@ class OAuthConfig:
         if authenticated_user:
             try:
                 from auth.oauth21_session_store import get_oauth21_session_store
+
                 store = get_oauth21_session_store()
                 if store.has_session(authenticated_user):
                     return "oauth21"
@@ -291,7 +361,9 @@ class OAuthConfig:
         # Default to OAuth 2.0 for maximum compatibility
         return "oauth20"
 
-    def get_authorization_server_metadata(self, scopes: Optional[List[str]] = None) -> Dict[str, Any]:
+    def get_authorization_server_metadata(
+        self, scopes: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """
         Get OAuth authorization server metadata per RFC 8414.
 
@@ -311,7 +383,11 @@ class OAuthConfig:
             "userinfo_endpoint": "https://openidconnect.googleapis.com/v1/userinfo",
             "response_types_supported": ["code", "token"],
             "grant_types_supported": ["authorization_code", "refresh_token"],
-            "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"],
+            "token_endpoint_auth_methods_supported": (
+                ["none"]
+                if self.is_public_client()
+                else ["client_secret_post", "client_secret_basic"]
+            ),
             "code_challenge_methods_supported": self.supported_code_challenge_methods,
         }
 
@@ -330,35 +406,40 @@ class OAuthConfig:
         return metadata
 
 
-# Global configuration instance
+# Global configuration instance with thread-safe access
 _oauth_config = None
+_oauth_config_lock = RLock()
 
 
 def get_oauth_config() -> OAuthConfig:
     """
     Get the global OAuth configuration instance.
 
+    Thread-safe singleton accessor.
+
     Returns:
         The singleton OAuth configuration instance
     """
     global _oauth_config
-    if _oauth_config is None:
-        _oauth_config = OAuthConfig()
-    return _oauth_config
+    with _oauth_config_lock:
+        if _oauth_config is None:
+            _oauth_config = OAuthConfig()
+        return _oauth_config
 
 
 def reload_oauth_config() -> OAuthConfig:
     """
     Reload the OAuth configuration from environment variables.
 
-    This is useful for testing or when environment variables change.
+    Thread-safe reload that prevents races with concurrent access.
 
     Returns:
         The reloaded OAuth configuration instance
     """
     global _oauth_config
-    _oauth_config = OAuthConfig()
-    return _oauth_config
+    with _oauth_config_lock:
+        _oauth_config = OAuthConfig()
+        return _oauth_config
 
 
 # Convenience functions for backward compatibility
@@ -410,3 +491,8 @@ def is_stateless_mode() -> bool:
 def is_external_oauth21_provider() -> bool:
     """Check if external OAuth 2.1 provider mode is enabled."""
     return get_oauth_config().is_external_oauth21_provider()
+
+
+def is_service_account_enabled() -> bool:
+    """Check if service account (domain-wide delegation) mode is enabled."""
+    return get_oauth_config().is_service_account_enabled()

@@ -4,10 +4,32 @@ Enhanced Log Formatter for Google Workspace MCP
 Provides visually appealing log formatting with emojis and consistent styling
 to match the safe_print output format.
 """
+
 import logging
 import os
 import re
 import sys
+
+
+class SuppressStatelessTransportTerminationFilter(logging.Filter):
+    """Drop noisy SDK cleanup logs emitted for stateless HTTP transports."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not (
+            record.name == "mcp.server.streamable_http"
+            and record.levelno == logging.INFO
+            and record.getMessage() == "Terminating session: None"
+        )
+
+
+def install_noisy_log_filters() -> None:
+    """Install targeted filters for known noisy third-party log lines."""
+    target_logger = logging.getLogger("mcp.server.streamable_http")
+    if not any(
+        isinstance(existing, SuppressStatelessTransportTerminationFilter)
+        for existing in target_logger.filters
+    ):
+        target_logger.addFilter(SuppressStatelessTransportTerminationFilter())
 
 
 class EnhancedLogFormatter(logging.Formatter):
@@ -15,12 +37,12 @@ class EnhancedLogFormatter(logging.Formatter):
 
     # Color codes for terminals that support ANSI colors
     COLORS = {
-        'DEBUG': '\033[36m',    # Cyan
-        'INFO': '\033[32m',     # Green
-        'WARNING': '\033[33m',  # Yellow
-        'ERROR': '\033[31m',    # Red
-        'CRITICAL': '\033[35m', # Magenta
-        'RESET': '\033[0m'      # Reset
+        "DEBUG": "\033[36m",  # Cyan
+        "INFO": "\033[32m",  # Green
+        "WARNING": "\033[33m",  # Yellow
+        "ERROR": "\033[31m",  # Red
+        "CRITICAL": "\033[35m",  # Magenta
+        "RESET": "\033[0m",  # Reset
     }
 
     def __init__(self, use_colors: bool = True, *args, **kwargs):
@@ -43,8 +65,8 @@ class EnhancedLogFormatter(logging.Formatter):
 
         # Build the formatted log entry
         if self.use_colors:
-            color = self.COLORS.get(record.levelname, '')
-            reset = self.COLORS['RESET']
+            color = self.COLORS.get(record.levelname, "")
+            reset = self.COLORS["RESET"]
             return f"{service_prefix} {color}{formatted_msg}{reset}"
         else:
             return f"{service_prefix} {formatted_msg}"
@@ -53,25 +75,28 @@ class EnhancedLogFormatter(logging.Formatter):
         """Get ASCII-safe prefix for Windows compatibility."""
         # ASCII-safe prefixes for different services
         ascii_prefixes = {
-            'core.tool_tier_loader': '[TOOLS]',
-            'core.tool_registry': '[REGISTRY]',
-            'auth.scopes': '[AUTH]',
-            'core.utils': '[UTILS]',
-            'auth.google_auth': '[OAUTH]',
-            'auth.credential_store': '[CREDS]',
-            'gcalendar.calendar_tools': '[CALENDAR]',
-            'gdrive.drive_tools': '[DRIVE]',
-            'gmail.gmail_tools': '[GMAIL]',
-            'gdocs.docs_tools': '[DOCS]',
-            'gsheets.sheets_tools': '[SHEETS]',
-            'gchat.chat_tools': '[CHAT]',
-            'gforms.forms_tools': '[FORMS]',
-            'gslides.slides_tools': '[SLIDES]',
-            'gtasks.tasks_tools': '[TASKS]',
-            'gsearch.search_tools': '[SEARCH]'
+            "core.tool_tier_loader": "[TOOLS]",
+            "core.tool_registry": "[REGISTRY]",
+            "auth.scopes": "[AUTH]",
+            "core.utils": "[UTILS]",
+            "auth.google_auth": "[OAUTH]",
+            "auth.credential_store": "[CREDS]",
+            "gcalendar.calendar_tools": "[CALENDAR]",
+            "gdrive.drive_tools": "[DRIVE]",
+            "gmail.gmail_tools": "[GMAIL]",
+            "gdocs.docs_tools": "[DOCS]",
+            "gsheets.sheets_tools": "[SHEETS]",
+            "gchat.chat_tools": "[CHAT]",
+            "gforms.forms_tools": "[FORMS]",
+            "gslides.slides_tools": "[SLIDES]",
+            "gtasks.tasks_tools": "[TASKS]",
+            "gsearch.search_tools": "[SEARCH]",
+            "auth.service_decorator": "[TOOL]",
+            "gcontacts.contacts_tools": "[CONTACTS]",
+            "gappsscript.apps_script_tools": "[APPSCRIPT]",
         }
 
-        return ascii_prefixes.get(logger_name, f'[{level_name}]')
+        return ascii_prefixes.get(logger_name, f"[{level_name}]")
 
     def _enhance_message(self, message: str) -> str:
         """Enhance the log message with better formatting."""
@@ -80,7 +105,9 @@ class EnhancedLogFormatter(logging.Formatter):
         # Tool tier loading messages
         if "resolved to" in message and "tools across" in message:
             # Extract numbers and service names for better formatting
-            pattern = r"Tier '(\w+)' resolved to (\d+) tools across (\d+) services: (.+)"
+            pattern = (
+                r"Tier '(\w+)' resolved to (\d+) tools across (\d+) services: (.+)"
+            )
             match = re.search(pattern, message)
             if match:
                 tier, tool_count, service_count, services = match.groups()
@@ -100,9 +127,8 @@ class EnhancedLogFormatter(logging.Formatter):
                 return f"Tool filtering complete: {enabled} tools enabled ({removed} filtered out)"
 
         # Enabled tools messages
-        if "Enabled tools set for scope management" in message:
-            tools = message.split(": ")[-1]
-            return f"Scope management configured for tools: {tools}"
+        if "Scope management active for" in message:
+            return message
 
         # Credentials directory messages
         if "Credentials directory permissions check passed" in message:
@@ -113,7 +139,9 @@ class EnhancedLogFormatter(logging.Formatter):
         return message
 
 
-def setup_enhanced_logging(log_level: int = logging.INFO, use_colors: bool = True) -> None:
+def setup_enhanced_logging(
+    log_level: int = logging.INFO, use_colors: bool = True
+) -> None:
     """
     Set up enhanced logging with ASCII prefix formatter for the entire application.
 
@@ -129,12 +157,19 @@ def setup_enhanced_logging(log_level: int = logging.INFO, use_colors: bool = Tru
 
     # Update existing console handlers
     for handler in root_logger.handlers:
-        if isinstance(handler, logging.StreamHandler) and handler.stream.name in ['<stderr>', '<stdout>']:
+        if isinstance(handler, logging.StreamHandler) and handler.stream.name in [
+            "<stderr>",
+            "<stdout>",
+        ]:
             handler.setFormatter(formatter)
 
     # If no console handler exists, create one
-    console_handlers = [h for h in root_logger.handlers
-                       if isinstance(h, logging.StreamHandler) and h.stream.name in ['<stderr>', '<stdout>']]
+    console_handlers = [
+        h
+        for h in root_logger.handlers
+        if isinstance(h, logging.StreamHandler)
+        and h.stream.name in ["<stderr>", "<stdout>"]
+    ]
 
     if not console_handlers:
         console_handler = logging.StreamHandler()
@@ -143,12 +178,30 @@ def setup_enhanced_logging(log_level: int = logging.INFO, use_colors: bool = Tru
         root_logger.addHandler(console_handler)
 
 
-def configure_file_logging(logger_name: str = None) -> bool:
+def _resolve_log_dir() -> str:
+    """Resolve the directory used for file logging.
+
+    Priority:
+    1. ``WORKSPACE_MCP_LOG_DIR`` (preferred)
+    2. ``~/.google_workspace_mcp/logs`` (default)
+
+    Tilde expansion is applied to env-var values so paths like ``~/logs`` work.
+    """
+    env_log_dir = os.getenv("WORKSPACE_MCP_LOG_DIR")
+    if env_log_dir:
+        return os.path.expanduser(env_log_dir)
+    return os.path.join(os.path.expanduser("~"), ".google_workspace_mcp", "logs")
+
+
+def configure_file_logging(logger_name: str | None = None) -> bool:
     """
     Configure file logging based on stateless mode setting.
 
     In stateless mode, file logging is completely disabled to avoid filesystem writes.
     In normal mode, sets up detailed file logging to 'mcp_server_debug.log'.
+
+    The log directory defaults to ``~/.google_workspace_mcp/logs`` and may be
+    overridden via the ``WORKSPACE_MCP_LOG_DIR`` environment variable.
 
     Args:
         logger_name: Optional name for the logger (defaults to root logger)
@@ -157,7 +210,9 @@ def configure_file_logging(logger_name: str = None) -> bool:
         bool: True if file logging was configured, False if skipped (stateless mode)
     """
     # Check if stateless mode is enabled
-    stateless_mode = os.getenv("WORKSPACE_MCP_STATELESS_MODE", "false").lower() == "true"
+    stateless_mode = (
+        os.getenv("WORKSPACE_MCP_STATELESS_MODE", "false").lower() == "true"
+    )
 
     if stateless_mode:
         logger = logging.getLogger(logger_name)
@@ -167,17 +222,22 @@ def configure_file_logging(logger_name: str = None) -> bool:
     # Configure file logging for normal mode
     try:
         target_logger = logging.getLogger(logger_name)
-        log_file_dir = os.path.dirname(os.path.abspath(__file__))
-        # Go up one level since we're in core/ subdirectory
-        log_file_dir = os.path.dirname(log_file_dir)
-        log_file_path = os.path.join(log_file_dir, 'mcp_server_debug.log')
 
-        file_handler = logging.FileHandler(log_file_path, mode='a')
+        # Write logs to user-specific directory, not the package directory
+        log_dir = _resolve_log_dir()
+        os.makedirs(log_dir, mode=0o700, exist_ok=True)
+        log_file_path = os.path.join(log_dir, "mcp_server_debug.log")
+
+        # Pre-create log file with restrictive permissions to avoid TOCTOU race
+        fd = os.open(log_file_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        os.close(fd)
+
+        file_handler = logging.FileHandler(log_file_path, mode="a")
         file_handler.setLevel(logging.DEBUG)
 
         file_formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(process)d - %(threadName)s '
-            '[%(module)s.%(funcName)s:%(lineno)d] - %(message)s'
+            "%(asctime)s - %(name)s - %(levelname)s - %(process)d - %(threadName)s "
+            "[%(module)s.%(funcName)s:%(lineno)d] - %(message)s"
         )
         file_handler.setFormatter(file_formatter)
         target_logger.addHandler(file_handler)
@@ -187,5 +247,8 @@ def configure_file_logging(logger_name: str = None) -> bool:
         return True
 
     except Exception as e:
-        sys.stderr.write(f"CRITICAL: Failed to set up file logging to '{log_file_path}': {e}\n")
+        log_file_path_str = locals().get("log_file_path", "<unknown>")
+        sys.stderr.write(
+            f"CRITICAL: Failed to set up file logging to '{log_file_path_str}': {e}\n"
+        )
         return False
